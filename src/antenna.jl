@@ -58,9 +58,9 @@ rotate_pattern = (pattern::anten_pattern, coord::Matrix{Float64}) -> begin
 
     # θ_grid_tmp = [rotate_vec_in_sph(θ,ϕ, coord')[1] for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
     # ϕ_grid_tmp = [rotate_vec_in_sph(θ,ϕ, coord')[2] for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
-    θ_grid_tmp = [θ for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
-    ϕ_grid_tmp = [ϕ for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
-    set_grid(θ_grid_tmp, ϕ_grid_tmp)
+    # θ_grid_tmp = [θ for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
+    # ϕ_grid_tmp = [ϕ for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
+    # set_grid(θ_grid_tmp, ϕ_grid_tmp)
         
     Gθ_grid = [ begin
         θ,ϕ = rotate_vec_in_sph(θ,ϕ,coord');

@@ -60,7 +60,7 @@ end
 
 
 c = 299792458
-θ_default, ϕ_default = (LinRange(0,180,100), LinRange(-180,180,200)) .|> x -> deg2rad.(x)
+θ_default, ϕ_default = (LinRange(0,180,181), LinRange(-180,180,361)) .|> x -> deg2rad.(x)
 θ_grid, ϕ_grid = ([θ for θ in θ_default, ϕ in ϕ_default], [ϕ for θ in θ_default, ϕ in ϕ_default])
 
 # θ_default, ϕ_default = ([0,90], [0,0]) .|> x -> deg2rad.(x)

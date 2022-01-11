@@ -27,11 +27,16 @@ function ploting_point(p::Vector{Vector{Float64}})
             [i[3] for i = vec_point])
     end
     x, y, z = expand_point(p)
+    max = maximum(sqrt.(x.^2 + y.^2 + z.^2))
     plot(scatter(x = x, y = y, z = z,
         type = "scatter3d",
         marker = attr(
             size = 2
         ),
+        Layout(
+            xaxis_range=[-max,max],
+            yaxis_range=[-max,max],
+            zaxis_range=[-max,max])
         mode = "markers"))
 end
 # ploting_point(point)
@@ -45,8 +50,27 @@ function ploting_pattern(pattern::anten_pattern)
     y = [i.y for i = tulple_matrix]
     z = [i.z for i = tulple_matrix]
 
-    plot(surface(x = x, y = y, z = z))
+    max = maximum(abs.(r))
+    @show max
+    plot(
+        surface(x = x, y = y, z = z,),
+        Layout(
+            scene_xaxis_range=[-max,max],
+            scene_yaxis_range=[-max,max],
+            scene_zaxis_range=[-max,max])
+    )
 
+end
+function ploting_pattern_2D(pattern::anten_pattern,ϕ=0)
+    r = [pattern.θ(θ, ϕ)^2 + pattern.ϕ(θ, ϕ)^2 for (θ,ϕ) = zip(θ=deg2rad.(0:180),deg2rad.(90))]
+    θ = [θ for (θ,ϕ) = zip(θ_grid,ϕ_grid)]
+    ϕ = [ϕ for (θ,ϕ) = zip(θ_grid,ϕ_grid)]
+    tulple_matrix = sph2cart.(θ, ϕ, r)
+    x = [i.x for i = tulple_matrix]
+    y = [i.y for i = tulple_matrix]
+    z = [i.z for i = tulple_matrix]
+
+    plot(surface(x = x, y = y, z = z))
 end
 # ploting_pattern(global_pattern)
 
