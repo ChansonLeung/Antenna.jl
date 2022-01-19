@@ -26,7 +26,13 @@ end
 #     )
 # end
 # pattern_identity = anten_pattern(θ = (θ, ϕ) -> abs(cos(θ)^2), ϕ = (θ, ϕ) -> 0)
+η = 120pi 
 pattern_identity = anten_pattern(θ = (θ, ϕ) -> 1, ϕ = (θ, ϕ) -> 0)
+# antenna theory 4-84
+pattern_dipole = anten_pattern(
+    θ = (θ, ϕ) -> 1.02/6*1im*η*exp(-1im*k)/(2pi) * (cos(pi/2*cos(θ))/(sin(θ)+1e-6)),
+    ϕ = (θ, ϕ) -> 0
+)
 
 
 Base.@kwdef mutable struct anten_point
@@ -51,6 +57,12 @@ function point_linear(; N, dx, pattern)
     vec_2_struct_point.(result)
 end
 
+function point_rectangle(;Nx,Ny, dx,dy,pattern)
+    vec_2_struct_point = p -> anten_point(p = (x = p[1], y = p[2], z = p[3]), pattern = pattern)
+    point = [[dx*i, dy*j, 0] for i in 1:Nx for j in 1:Ny]
+    vec_2_struct_point.(point)   
+end
+
 function point_from_vec(; vec_point, pattern)
     vec_2_struct_point = (vec) -> anten_point(p = (x = vec[1], y = vec[2], z = vec[3]), pattern = pattern)
     vec_2_struct_point.(vec_point)
@@ -61,7 +73,8 @@ end
 
 c = 299792458
 θ_default, ϕ_default = (LinRange(0,180,181), LinRange(-180,180,361)) .|> x -> deg2rad.(x)
-θ_grid, ϕ_grid = ([θ for θ in θ_default, ϕ in ϕ_default], [ϕ for θ in θ_default, ϕ in ϕ_default])
+θ_grid, ϕ_grid = ([θ for θ in θ_default, ϕ in ϕ_default],
+                 [ϕ for θ in θ_default, ϕ in ϕ_default])
 
 # θ_default, ϕ_default = ([0,90], [0,0]) .|> x -> deg2rad.(x)
 
@@ -93,6 +106,8 @@ export
     set_point_loc_coord!,
     set_point_pattern!,
     point_from_vec,
-    pattern_identity
+    pattern_identity,
+    point_rectangle,
+    pattern_dipole
 
 end
