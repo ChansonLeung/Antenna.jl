@@ -18,7 +18,9 @@ coords = vec_x_y_z_2_vec_coord_matrix.(vecx, vecy, vecz)
 
 print("\ec\n")
 # read element file
-elem_pattern = anten_read("test/pattern.csv")
+# elem_pattern = anten_read("test/pattern.csv")
+elem_pattern = include("read_element.jl")
+ploting_pattern(elem_pattern)
 # create point with pattern 
 point = point_from_vec(vec_point = point_wing, pattern = elem_pattern)
 # # set coord
@@ -26,7 +28,7 @@ set_point_loc_coord!.(point, coords)
 # # calculate
 θₜ, ϕₜ = (0, 90) .|> deg2rad
 global_pattern =@time cal_pattern(point, θₜ, ϕₜ)
-ploting_pattern(global_pattern,min=-20)
+ploting_pattern(global_pattern,min=-0)
 # ploting_point(point)
 
 
@@ -53,3 +55,8 @@ ploting_pattern(global_pattern,min=-20)
 # θₜ, ϕₜ = (0, 80) .|> deg2rad
 # global_pattern = cal_pattern(point_rec, θₜ, ϕₜ)
 # ploting_pattern(global_pattern)
+
+# testing rotate pattern
+# pattern =@btime rotate_pattern(pattern_dipole, rotate45)
+# ploting_pattern(pattern)
+# @code_warntype rotate_pattern(pattern_dipole, rotate45)

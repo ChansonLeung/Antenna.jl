@@ -30,7 +30,7 @@ end
 pattern_identity = anten_pattern(θ = (θ, ϕ) -> 1, ϕ = (θ, ϕ) -> 0)
 # antenna theory 4-84
 pattern_dipole = anten_pattern(
-    θ = (θ, ϕ) -> 1.02/6*1im*η*exp(-1im*k)/(2pi) * (cos(pi/2*cos(θ))/(sin(θ)+1e-6)),
+    θ = (θ, ϕ) -> 1im*η*exp(-1im*k)/(2pi) * (cos(pi/2*cos(θ))/(sin(θ)+1e-6)),
     ϕ = (θ, ϕ) -> 0
 )
 
@@ -72,8 +72,8 @@ end
 
 
 c = 299792458
-θ_default, ϕ_default = (LinRange(0,180,181), LinRange(-180,180,361)) .|> x -> deg2rad.(x)
-θ_grid, ϕ_grid = ([θ for θ in θ_default, ϕ in ϕ_default],
+const θ_default, ϕ_default = (LinRange(0,180,361), LinRange(-180,180,361)) .|> x -> deg2rad.(x)
+const θ_grid, ϕ_grid = ([θ for θ in θ_default, ϕ in ϕ_default],
                  [ϕ for θ in θ_default, ϕ in ϕ_default])
 
 # θ_default, ϕ_default = ([0,90], [0,0]) .|> x -> deg2rad.(x)

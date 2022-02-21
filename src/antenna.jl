@@ -21,7 +21,12 @@ export
     anten_read,
     rotate_vec_in_sph,
     rotate_vec_in_cart,
-    rotate_pattern
+    rotate_pattern,
+    directivity,
+    radiation_intensity,
+    radiated_power,
+    gain,
+    Iₛ
 
 # array function
 # array factor
@@ -30,7 +35,7 @@ AF(point, θ, ϕ, k) = exp(1im * k * (point.x * sin(θ)cos(ϕ) + point.y * sin(�
 Iₛ(point, θₜ, ϕₜ, k) = AF(point, θₜ, ϕₜ, k) ^ -1
 # Iₛ(point, θₜ, ϕₜ, k) = 1
 # pattern for one point
-Pi(point, Pe, θ, ϕ, θₜ, ϕₜ, k) = Iₛ(point, θₜ, ϕₜ, k)Pe(θ, ϕ)AF(point, θ, ϕ, k)
+Pi(point, Pe, θ, ϕ, θₜ, ϕₜ, k) = Pe(θ, ϕ)AF(point, θ, ϕ, k)
 # apply rotation
 # XXX untest
 rotate_vec_in_sph = (θ, ϕ, M) -> begin
@@ -53,32 +58,26 @@ vec_ϕ(θ, ϕ) = [-sin(ϕ), cos(ϕ), 0]
 
 
 rotate_pattern = (pattern::anten_pattern, coord::Matrix{Float64}) -> begin
-
-    θ_grid = [θ for θ in θ_default, ϕ in ϕ_default]
-    ϕ_grid = [ϕ for θ in θ_default, ϕ in ϕ_default]
-
-    # θ_grid_tmp = [rotate_vec_in_sph(θ,ϕ, coord')[1] for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
-    # ϕ_grid_tmp = [rotate_vec_in_sph(θ,ϕ, coord')[2] for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
-    # θ_grid_tmp = [θ for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
-    # ϕ_grid_tmp = [ϕ for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
-    # set_grid(θ_grid_tmp, ϕ_grid_tmp)
+    
+    θ_grid::Matrix{Float64} = [θ for θ in θ_default, ϕ in ϕ_default]
+    ϕ_grid::Matrix{Float64} = [ϕ for θ in θ_default, ϕ in ϕ_default]
         
-    Gθ_grid = [ begin
+    Gθ_grid::Matrix{Vector{ComplexF64}} = [ begin
         θ,ϕ = rotate_vec_in_sph(θ,ϕ,coord');
         (coord*vec_θ(θ,ϕ))*pattern.θ(θ,ϕ) end
     for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
 
-    Gϕ_grid = [begin
+    Gϕ_grid::Matrix{Vector{ComplexF64}} = [begin
         θ,ϕ = rotate_vec_in_sph(θ, ϕ, coord');
         (coord*vec_ϕ(θ,ϕ))*pattern.ϕ(θ,ϕ) end
     for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
     
-    vec_θ₁_map_grid = [vec_θ(θ,ϕ) for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
-    vec_ϕ₁_map_grid = [vec_ϕ(θ,ϕ) for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
+    vec_θ₁_map_grid::Matrix{Vector{Float64}} = [vec_θ(θ,ϕ) for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
+    vec_ϕ₁_map_grid::Matrix{Vector{Float64}} = [vec_ϕ(θ,ϕ) for (θ,ϕ) = zip(θ_grid, ϕ_grid)]
 
-    Gθ = (dot.(Gθ_grid, vec_θ₁_map_grid))+
+    Gθ = (dot.(Gθ_grid, vec_θ₁_map_grid)) .+
         (dot.(Gϕ_grid, vec_θ₁_map_grid))
-    Gϕ = (dot.(Gϕ_grid, vec_ϕ₁_map_grid))+
+    Gϕ = (dot.(Gϕ_grid, vec_ϕ₁_map_grid)) .+
         (dot.(Gθ_grid, vec_ϕ₁_map_grid))
 
     result = anten_pattern(
@@ -90,22 +89,26 @@ end
 # calculate the global pattern
 # para∑ can be write like this
 # para∑(Pi(point:p, point:pattern.θ , θ, ϕ, θₜ, ϕₜ, k), (point, θ,ϕ, θₜ, ϕₜ,k))
-function cal_pattern(point::Vector{anten_point}, θₜ, ϕₜ, k = k, θ = θ_default, ϕ = ϕ_default)
+function cal_pattern(point::Vector{anten_point}, point_I, θₜ, ϕₜ, k = k, θ = θ_default, ϕ = ϕ_default)
 
-    # apply_rotation to the pattern
-    # map((point::anten_point) ->
+    # # apply_rotation to the pattern
+    # @time map(
+    #     (point::anten_point) ->
     #         point.pattern = rotate_pattern(point.pattern, point.local_coord),
     #     point
     # )
+    @time Threads.@threads for p in point 
+        p.pattern = rotate_pattern(p.pattern, p.local_coord)
+    end
+
 
     # calculate result
     result_θ = zeros(ComplexF64, size(θ, 1), size(ϕ, 1), size(point, 1))
     result_ϕ = zeros(ComplexF64, size(θ, 1), size(ϕ, 1), size(point, 1))
-    # Threads.@threads for (ind_point, point) = collect(enumerate(point))
-    for (ind_point, point_i) = collect(enumerate(point))
+    Threads.@threads for (ind_point, point_i) = collect(enumerate(point))
         for (i, θ) = enumerate(θ), (j, ϕ) = enumerate(ϕ)
-            result_θ[i, j, ind_point] = Pi(point_i.p, point_i.pattern.θ, θ, ϕ, θₜ, ϕₜ, k)
-            result_ϕ[i, j, ind_point] = Pi(point_i.p, point_i.pattern.ϕ, θ, ϕ, θₜ, ϕₜ, k)
+            result_θ[i, j, ind_point] = Iₛ(point_I[ind_point].p, θₜ, ϕₜ, k)Pi(point_i.p, point_i.pattern.θ, θ, ϕ, θₜ, ϕₜ, k)
+            result_ϕ[i, j, ind_point] = Iₛ(point_I[ind_point].p, θₜ, ϕₜ, k)Pi(point_i.p, point_i.pattern.ϕ, θ, ϕ, θₜ, ϕₜ, k)
         end
     end
 
@@ -123,13 +126,13 @@ end
 
 
 # order: the column number for θ,ϕ,Sθ,Sϕ, for HFSS is [2, 1, 4, 3]
-function anten_read(filepath, type = "hfss"; unit = "db", order = [2, 1, 4, 3])
+function anten_read(filepath, type = "hfss"; unit = "abs", factor = 1, order = [2, 1, 4, 3])
     #pick data from the dataframe
     unit_corrector = unit -> begin
         if unit == "db"
             x -> 10^(x / 10) |>sqrt
         else
-            x -> x
+            x -> x * factor
         end
     end
     convert_from_hfss = x -> begin
@@ -163,38 +166,15 @@ function anten_read(filepath, type = "hfss"; unit = "db", order = [2, 1, 4, 3])
         ϕ = translate2Interpolation(θ, ϕ, raw_anten.Gϕ)
     )
 end
-
-
-# calculate result
-
-# set_param(f=5.8e9)
-# θₜ, ϕₜ = (0, 0) .|> deg2rad
-# point = point_linear(N = 8, dx = 25e-3)
-# set_point_loc_coord!.(point, [[1.0 0 0;0 1 0; 1 0 1]])
-# P_norm = cal_pattern(point, θₜ, ϕₜ)  .|> scale2log |> normlog
-# plot(P_norm[:,1])
-
-
-
-
-
-# calculate interp
-# pattern = anten_read("pattern.csv")
-# plot(pattern, ϕ = pi / 2)
-
-
-
-
-# apply rotation
-# set_param(f=5.8e9)
-# elem_pattern = anten_read("pattern.csv")
-# point = point_linear(N = 8, dx = 25e-3, pattern = elem_pattern)
-# set_point_loc_coord!.(point, [Matrix(1.0I, (3, 3))])
-# #XXX FIXME wrong result
-# θₜ, ϕₜ = (0, 90) .|> deg2rad
-# global_pattern = @time cal_pattern(point, θₜ, ϕₜ)
-# plot(global_pattern)
-# # plot([global_pattern.θ(θ,ϕ) for θ=θ_default,ϕ=ϕ_default][:,271])
-
-
+# watt/unit solid angle 2-12a
+radiation_intensity = pattern -> [
+    1/2(120pi)*(abs(pattern.θ(θ, ϕ))^2 + abs(pattern.ϕ(θ, ϕ))^2)
+    for (θ, ϕ) = zip(θ_grid, ϕ_grid)]
+# watt 2-13
+radiated_power = pattern -> P = [
+    sin(θ)*U *2pi *pi  * 1/size(ϕ_default,1)size(θ_default, 1)
+    for (U, θ) in zip(radiation_intensity(pattern),θ_grid) ] |> sum
+# 2-16
+directivity = pattern ->  4pi*radiation_intensity(pattern)/radiated_power(pattern) 
+gain = (pattern, inciden_power) -> 4pi*radiation_intensity(pattern)/inciden_power
 end

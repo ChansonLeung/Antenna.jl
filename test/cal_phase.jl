@@ -1,5 +1,6 @@
 AF(point, θ, ϕ, k) = exp(1im * k * (point[1] * sin(θ)cos(ϕ) + point[2] * sin(θ)sin(ϕ) + point[3] * cos(θ)))
-Iₛ(point, θₜ, ϕₜ, k) = AF(point, θₜ, ϕₜ, k) * exp(-1)
+Iₛ(point, θₜ, ϕₜ, k) = AF(point, θₜ, ϕₜ, k) ^ -1 
+
 phase_move2coplane = (point::Vector{Float64},f::Float64, θₜ::Float64, ϕₜ::Float64) ->begin
     c = 299792458
     k = 2pi*f/c
@@ -19,23 +20,22 @@ end
 
 # 对所有点进行补偿
 function I_compensate_all(point_bent::Vector{Vector{Float64}}, 
-                            point_phase_origin::Vector{Float64}, 
+                            # point_phase_origin::Vector{Float64}, 
                             I_flat::Vector{Float64},
                             f::Float64, 
                             θₜ::Float64, 
                             ϕₜ::Float64)
-    I_compensate_all =  (I_compensate.(point_bent, I_flat, f, θₜ, ϕₜ) .-
-                        phase_move2coplane(point_phase_origin,f,θₜ,ϕₜ)) .|> mod2pi
+    I_compensate_all =  I_compensate.(point_bent, I_flat, f, θₜ, ϕₜ) .|> mod2pi
 end
 
 
-point_bend, point_phase_origin, I_flat = include("read_data.jl")
-f=2.4
+point_bend, I_flat = include("read_data.jl")
+f=2.6
 θ = 0.
 ϕ = 0.
 
 using BenchmarkTools
-@btime I_compensate_all(point_bend, point_phase_origin, I_flat, f,θ,ϕ)
-
+@time I_compensate_all(point_bend, I_flat, f,θ,ϕ)
+# @btime I_compensate(point_bend[1], I_flat[1],f,θ,ϕ)
 
 

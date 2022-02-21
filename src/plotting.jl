@@ -4,6 +4,7 @@ using ..type
 using ..utils
 using PlotlyJS
 using LinearAlgebra
+using antenna
 # θ_default, ϕ_default = (1:1:179, -180:1:179) .|> x -> deg2rad.(x)
 
 function ploting_point(p::Vector{anten_point})
@@ -53,9 +54,18 @@ end
 # ploting_point(point)
 
 function ploting_pattern(pattern::anten_pattern; min = -40)
-    r = [sqrt(abs(pattern.θ(θ, ϕ))^2 + abs(pattern.ϕ(θ, ϕ))^2) for (θ, ϕ) = zip(θ_grid, ϕ_grid)]
+    r = directivity(pattern)
 
     r_log_raw  = 10log10.(r)
+    # get maximum U and the direction
+    max_U = maximum(r_log_raw)
+    max_theta = θ_grid[r_log_raw .== max_U]  .|>
+                rad2deg .|>  
+                x -> round(x, digits=2)
+    max_phi = ϕ_grid[r_log_raw .== max_U] .|>
+                rad2deg .|> 
+                x -> round(x, digits=2)
+
     r_log_limmin  = 10log10.(r)
     r_log_limmin[r_log_limmin.<min] .= min
     r_plot  = 10log10.(r)
@@ -69,7 +79,7 @@ function ploting_pattern(pattern::anten_pattern; min = -40)
     y = [i.y for i = tulple_matrix]
     z = [i.z for i = tulple_matrix]
 
-    @show max = maximum(r_plot)
+    max = maximum(r_plot)
     plot(
         surface(
             x = x, y = y, z = z,
@@ -82,12 +92,42 @@ function ploting_pattern(pattern::anten_pattern; min = -40)
                             r_log_raw
                         )
                     ),
-            surfacecolor = r_log_limmin,
+            surfacecolor = r_log_raw,
             colorscale = "Jet",
             # hovertemplate = "x:%{x},y:%{y},z:%{z}, <br>θ:%{customdata} <br>ϕ:%{customdata[1]} ",
             # hovertemplate = "x:%{x},y:%{y},z:%{z}, <br>θ:%{customdata}",
         ),
         Layout(
+            title = attr(
+                text="最大方向性系数: $(round(max_U, digits=2)) dB in θ=$(max_theta)°,ϕ=$(max_phi)°"
+            ),
+            scene = attr(
+                xaxis = attr(
+                    showgrid=false,
+                    showticklabels = false,
+                    showbackground = false,
+                    showaxeslabels = false,
+                    # title= attr(
+                    #     text=""
+                    # )
+                ),
+                yaxis = attr(
+                    showgrid=false,
+                    showticklabels = false,
+                    showbackground = false,
+                    # title= attr(
+                    #     text=""
+                    # )
+                ),
+                zaxis = attr(
+                    showgrid=false,
+                    # showbackground = false,
+                    showticklabels = false,
+                    title= attr(
+                        text=""
+                    )
+                ),
+            ),
             scene_xaxis_range = [-max, max],
             scene_yaxis_range = [-max, max],
             scene_zaxis_range = [-max, max]
@@ -140,7 +180,7 @@ function plot_E_vec_field(pattern::anten_pattern; mode = "1vec")
         w = [w; w2]
     else
         vec_vec_globe = [
-            vec_θ(θ, ϕ) * pattern.θ(θ, ϕ) .+ vec_ϕ(θ, ϕ) * pattern.ϕ(θ, ϕ)
+            vec_θ(θ, ϕ) * abs(pattern.θ(θ, ϕ)) .+ vec_ϕ(θ, ϕ) * abs(pattern.ϕ(θ, ϕ))
             for (θ, ϕ) = zip(θ_grid, ϕ_grid)
         ]
 
