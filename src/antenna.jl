@@ -1,4 +1,4 @@
-module antenna
+module Antenna
 
 using LinearAlgebra
 using Interpolations
