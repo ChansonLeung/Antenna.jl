@@ -1,3 +1,7 @@
+name = "Antenna"
+uuid = "30760506-563d-44a2-9915-961ee05d8d7b"
+authors = ["Chanson <liangchangsong@163.com> and contributors"]
+version = "0.1.0"
 [deps]
 CSV = "336ed68f-0bac-5ca0-87d4-7b16caf5d00b"
 Chain = "8be319e6-bccf-4806-a6f7-6fae938471bc"
