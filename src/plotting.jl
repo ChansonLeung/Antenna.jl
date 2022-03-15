@@ -1,8 +1,6 @@
 using PlotlyJS
 using LinearAlgebra
 using Antenna
-# using ..utils
-# θ_default, ϕ_default = (1:1:179, -180:1:179) .|> x -> deg2rad.(x)
 
 function ploting_point(p::Vector{anten_point})
     expand_point = (vec_point) -> begin

@@ -12,9 +12,6 @@ using Reexport
 include("type.jl")
 include("utils.jl")
 include("plotting.jl")
-@reexport using .type
-@reexport using .plotting
-@reexport using .utils
 
 export
     cal_pattern,
