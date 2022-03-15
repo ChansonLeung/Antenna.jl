@@ -1,7 +1,7 @@
 using DataFrames
 using CSV
 using Chain
-using antenna
+using Antenna
 using Interpolations
 
 print("\ec")

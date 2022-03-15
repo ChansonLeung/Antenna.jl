@@ -1,5 +1,3 @@
-module utils
-
 export 
     scale2log,
     normlog,
@@ -26,6 +24,4 @@ cart2sph(x, y, z) = begin
         ϕ = ϕ,
         r = r
     )
-end
-
 end

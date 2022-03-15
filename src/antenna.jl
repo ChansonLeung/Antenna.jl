@@ -32,7 +32,8 @@ export
 # array factor
 AF(point, θ, ϕ, k) = exp(1im * k * (point.x * sin(θ)cos(ϕ) + point.y * sin(θ)sin(ϕ) + point.z * cos(θ)))
 # current source
-Iₛ(point, θₜ, ϕₜ, k) = AF(point, θₜ, ϕₜ, k) ^ -1
+# Iₛ(point, θₜ, ϕₜ, k) = AF(point, θₜ, ϕₜ, k) ^ -1
+Iₛ(point, θₜ, ϕₜ, k) = 1
 # Iₛ(point, θₜ, ϕₜ, k) = 1
 # pattern for one point
 Pi(point, Pe, θ, ϕ, θₜ, ϕₜ, k) = Pe(θ, ϕ)AF(point, θ, ϕ, k)

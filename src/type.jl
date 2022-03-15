@@ -1,5 +1,4 @@
 # FIXME
-module type
 using LinearAlgebra
 # XXX only for uniform gird
 # 1. read the pattern csv file and plot it
@@ -110,4 +109,3 @@ export
     point_rectangle,
     pattern_dipole
 
-end

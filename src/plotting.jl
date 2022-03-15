@@ -1,10 +1,7 @@
-module plotting
-
-using ..type
-using ..utils
 using PlotlyJS
 using LinearAlgebra
-using antenna
+using Antenna
+# using ..utils
 # θ_default, ϕ_default = (1:1:179, -180:1:179) .|> x -> deg2rad.(x)
 
 function ploting_point(p::Vector{anten_point})
@@ -92,7 +89,7 @@ function ploting_pattern(pattern::anten_pattern; min = -40)
                             r_log_raw
                         )
                     ),
-            surfacecolor = r_log_raw,
+            surfacecolor = r_log_limmin,
             colorscale = "Jet",
             # hovertemplate = "x:%{x},y:%{y},z:%{z}, <br>θ:%{customdata} <br>ϕ:%{customdata[1]} ",
             # hovertemplate = "x:%{x},y:%{y},z:%{z}, <br>θ:%{customdata}",
@@ -265,4 +262,3 @@ export
     ploting_pattern,
     plot_E_vec_field,
     plot_E_vec_field_test
-end
