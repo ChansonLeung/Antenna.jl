@@ -1,5 +1,6 @@
 # FIXME
 using LinearAlgebra
+import Base
 # XXX only for uniform gird
 # 1. read the pattern csv file and plot it
 # elem_pattern = anten_read("pattern.csv")
@@ -33,11 +34,11 @@ pattern_dipole = anten_pattern(
     ϕ = (θ, ϕ) -> 0
 )
 
-
 Base.@kwdef mutable struct anten_point
     #point
     p::NamedTuple{(:x, :y, :z),Tuple{Float64,Float64,Float64}}
     pattern::anten_pattern
+    coeffi::Number = 1
     #XXX maybe slow down the performance
     local_coord = Matrix(1.0I, 3, 3)
 end
@@ -56,10 +57,53 @@ function point_linear(; N, dx, pattern)
     vec_2_struct_point.(result)
 end
 
+function F(n::Integer,  R0)
+    # Antenna Theory 7-26
+    A_(R0) = 1/pi * acosh(R0)
+    A = A_(R0)
+    # Antenna Theory 7-28
+    σ_(n) = n /sqrt(A^2 + (n-0.5) ^2 )
+    σ = σ_(n)
+    # Antenna Theory 7-29
+    μ_(n,σ ,A) = π * σ * sqrt(A^2 + (n-0.5)^2)
+    μ(n) =  μ_(n,σ ,A)
+
+    # Antenna Theory 7-30a
+    SF(p) = begin
+        item1 = factorial(n-1)^2/(factorial(n-1+p)factorial(n-1-p) )
+        item2 = 1.0
+        for i in 1:n-1
+            item2 *= 1-(p*π/μ(i))^2
+        end
+        return item1*item2 
+    end
+    # Antenna Theory 7-30
+    I(l, z) = begin
+        item1 = 1/l
+        item2 = 0
+        for p in 1:n-1
+            item2 += SF(p)cos(2π*p*z/l)
+        end
+        return item1*(1+2*item2)
+    end
+end
+
+
 function point_rectangle(;Nx,Ny, dx,dy,pattern)
-    vec_2_struct_point = p -> anten_point(p = (x = p[1], y = p[2], z = p[3]), pattern = pattern)
+    vec_2_struct_point = (p, coeffi) -> anten_point(p = (x = p[1], y = p[2], z = p[3]), pattern = pattern, coeffi = coeffi)
     point = [[dx*i, dy*j, 0] for i in 1:Nx for j in 1:Ny]
-    vec_2_struct_point.(point)   
+
+    R0 = 20
+    n = 5
+    l = 3.5
+
+    I = F(n, R0)
+    coeffi = [I(l, x*0.5)/I(l, 0) *I(l, y*0.5)/I(l, 0)   
+    for x in (1:Nx) .- (Nx+1)/2
+        for y in (1:Ny) .- (Ny+1)/2]
+
+    # vec_2_struct_point.(point, coeffi)   
+    vec_2_struct_point.(point, 1)   
 end
 
 function point_from_vec(; vec_point, pattern)
