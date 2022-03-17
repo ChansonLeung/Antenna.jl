@@ -30,7 +30,7 @@ theta = collect(0.:180.) .|> deg2rad
 phi = collect(-180.:180.) .|> deg2rad 
 
 
-anten_pattern(
+return anten_pattern(
     θ=LinearInterpolation((theta, phi), rE_theta),
     ϕ=LinearInterpolation((theta, phi), rE_phi)
 )
