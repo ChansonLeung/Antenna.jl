@@ -1,6 +1,7 @@
 # FIXME
 using LinearAlgebra
-import Base
+include("synthesis.jl")
+
 # XXX only for uniform gird
 # 1. read the pattern csv file and plot it
 # elem_pattern = anten_read("pattern.csv")
@@ -57,36 +58,6 @@ function point_linear(; N, dx, pattern)
     vec_2_struct_point.(result)
 end
 
-function F(n::Integer,  R0)
-    # Antenna Theory 7-26
-    A_(R0) = 1/pi * acosh(R0)
-    A = A_(R0)
-    # Antenna Theory 7-28
-    σ_(n) = n /sqrt(A^2 + (n-0.5) ^2 )
-    σ = σ_(n)
-    # Antenna Theory 7-29
-    μ_(n,σ ,A) = π * σ * sqrt(A^2 + (n-0.5)^2)
-    μ(n) =  μ_(n,σ ,A)
-
-    # Antenna Theory 7-30a
-    SF(p) = begin
-        item1 = factorial(n-1)^2/(factorial(n-1+p)factorial(n-1-p) )
-        item2 = 1.0
-        for i in 1:n-1
-            item2 *= 1-(p*π/μ(i))^2
-        end
-        return item1*item2 
-    end
-    # Antenna Theory 7-30
-    I(l, z) = begin
-        item1 = 1/l
-        item2 = 0
-        for p in 1:n-1
-            item2 += SF(p)cos(2π*p*z/l)
-        end
-        return item1*(1+2*item2)
-    end
-end
 
 
 function point_rectangle(;Nx,Ny, dx,dy,pattern)
@@ -97,13 +68,13 @@ function point_rectangle(;Nx,Ny, dx,dy,pattern)
     n = 5
     l = 3.5
 
-    I = F(n, R0)
+    I = Taylor_Chebyshev_I(n, R0)
     coeffi = [I(l, x*0.5)/I(l, 0) *I(l, y*0.5)/I(l, 0)   
     for x in (1:Nx) .- (Nx+1)/2
         for y in (1:Ny) .- (Ny+1)/2]
 
-    # vec_2_struct_point.(point, coeffi)   
-    vec_2_struct_point.(point, 1)   
+    vec_2_struct_point.(point, coeffi)   
+    # vec_2_struct_point.(point, 1)   
 end
 
 function point_from_vec(; vec_point, pattern)
