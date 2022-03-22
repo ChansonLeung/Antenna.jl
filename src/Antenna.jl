@@ -8,6 +8,7 @@ using CSV
 using DataFrames
 using Match
 using Reexport
+using Memoize
 
 include("type.jl")
 include("utils.jl")
@@ -84,15 +85,15 @@ rotate_pattern = (pattern::anten_pattern, coord::Matrix{Float64}) -> begin
          (dot.(Gθ_grid, vec_ϕ₁_map_grid))
 
     result = anten_pattern(
-        θ = LinearInterpolation((θ_default, ϕ_default), Gθ),
-        ϕ = LinearInterpolation((θ_default, ϕ_default), Gϕ)
+        θ=LinearInterpolation((θ_default, ϕ_default), Gθ),
+        ϕ=LinearInterpolation((θ_default, ϕ_default), Gϕ)
     )
 end
 
 # calculate the global pattern
 # para∑ can be write like this
 # para∑(Pi(point:p, point:pattern.θ , θ, ϕ, θₜ, ϕₜ, k), (point, θ,ϕ, θₜ, ϕₜ,k))
-function cal_pattern(point::Vector{anten_point}, point_I, θₜ, ϕₜ, k = k, θ = θ_default, ϕ = ϕ_default)
+function cal_pattern(point::Vector{anten_point}, point_I, θₜ, ϕₜ, k=k, θ=θ_default, ϕ=ϕ_default)
 
     # # apply_rotation to the pattern
     # @time map(
@@ -115,17 +116,17 @@ function cal_pattern(point::Vector{anten_point}, point_I, θₜ, ϕₜ, k = k, �
         end
     end
 
-    result_θ = sum(result_θ, dims = 3)[:, :, 1] .|> abs
-    result_ϕ = sum(result_ϕ, dims = 3)[:, :, 1] .|> abs
+    result_θ = sum(result_θ, dims=3)[:, :, 1] .|> abs
+    result_ϕ = sum(result_ϕ, dims=3)[:, :, 1] .|> abs
 
     anten_pattern(
-        θ = LinearInterpolation((θ_default, ϕ_default), result_θ),
-        ϕ = LinearInterpolation((θ_default, ϕ_default), result_ϕ),
+        θ=LinearInterpolation((θ_default, ϕ_default), result_θ),
+        ϕ=LinearInterpolation((θ_default, ϕ_default), result_ϕ),
     )
 end
 
 # order: the column number for θ,ϕ,Sθ,Sϕ, for HFSS is [2, 1, 4, 3]
-function anten_read(filepath, type = "hfss"; unit = "abs", factor = 1, order = [2, 1, 4, 3])
+function anten_read(filepath, type="hfss"; unit="abs", factor=1, order=[2, 1, 4, 3])
     #pick data from the dataframe
     unit_corrector = unit -> begin
         if unit == "db"
@@ -136,10 +137,10 @@ function anten_read(filepath, type = "hfss"; unit = "abs", factor = 1, order = [
     end
     convert_from_hfss = x -> begin
         (
-            θ = deg2rad.(x[:, order[1]]),
-            ϕ = deg2rad.(x[:, order[2]]),
-            Gθ = x[:, order[3]] .|> unit_corrector(unit),
-            Gϕ = x[:, order[4]] .|> unit_corrector(unit)
+            θ=deg2rad.(x[:, order[1]]),
+            ϕ=deg2rad.(x[:, order[2]]),
+            Gθ=x[:, order[3]] .|> unit_corrector(unit),
+            Gϕ=x[:, order[4]] .|> unit_corrector(unit)
         )
     end
 
@@ -161,21 +162,28 @@ function anten_read(filepath, type = "hfss"; unit = "abs", factor = 1, order = [
     ϕ = _3Dvec_2_1Dvec(raw_anten.ϕ)
 
     anten_pattern(
-        θ = translate2Interpolation(θ, ϕ, raw_anten.Gθ),
-        ϕ = translate2Interpolation(θ, ϕ, raw_anten.Gϕ)
+        θ=translate2Interpolation(θ, ϕ, raw_anten.Gθ),
+        ϕ=translate2Interpolation(θ, ϕ, raw_anten.Gϕ)
     )
 end
+
+# function below may has performance problem that need to be check because of the usage of lambda inside the comprehension 
 # unit of radiation intensity is w/sr (watt/unit solid angle) refer to Antenna Theory 2-12a
-radiation_intensity = pattern -> [
-    1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2 + abs(pattern.ϕ(θ, ϕ))^2)
-    for (θ, ϕ) = zip(θ_grid, ϕ_grid)]
+function radiation_intensity(pattern::anten_pattern)
+    (θ, ϕ) -> 1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2 + abs(pattern.ϕ(θ, ϕ))^2)
+end
 # unit of radiated power is w (watt) refer to Antenna Theory 2-13
-radiated_power = pattern -> P = [
-    sin(θ) * U * 2pi * pi * 1 / size(ϕ_default, 1)size(θ_default, 1)
-    for (U, θ) in zip(radiation_intensity(pattern), θ_grid)] |> sum
+@memoize function radiated_power(pattern::anten_pattern)
+    result = sum([sin(θ) * U * 2pi * pi * 1 / size(ϕ_default, 1)size(θ_default, 1)
+                  for (U, θ) in zip(radiation_intensity(pattern).(θ_grid, ϕ_grid), θ_grid)])
+end
 
 # no unit refer to Antenna Theory 2-16
-directivity = pattern -> 4pi * radiation_intensity(pattern) / radiated_power(pattern)
+@memoize function directivity(pattern::anten_pattern)
+    (θ, ϕ) -> 4pi * radiation_intensity(pattern)(θ, ϕ) / radiated_power(pattern)
+end
 # no unit refer to Antenna Theory 2-16
-gain = (pattern, inciden_power) -> 4pi * radiation_intensity(pattern) / inciden_power
+gain = (pattern, inciden_power) -> function (θ, ϕ)
+    4pi * radiation_intensity(pattern)(θ, ϕ) / inciden_power
+end
 end

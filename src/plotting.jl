@@ -3,6 +3,7 @@ using LinearAlgebra
 using Antenna
 using Interpolations
 
+
 function ploting_point(p::Vector{anten_point})
     expand_point = (vec_point) -> begin
         ([i.p.x for i = vec_point],
@@ -50,8 +51,7 @@ end
 # ploting_point(point)
 
 function ploting_pattern(pattern::anten_pattern; min = -40)
-    r = directivity(pattern)
-
+    r = directivity(pattern).(θ_grid, ϕ_grid)
     r_log_raw = 10log10.(r)
     # get maximum U and the direction
     max_U = maximum(r_log_raw)
@@ -131,16 +131,9 @@ function ploting_pattern(pattern::anten_pattern; min = -40)
     )
 
 end
-function ploting_pattern_2D(pattern::anten_pattern; θ = deg2rad.(-179:179), ϕ = 0)
-    # θ ∈ [0 180]
-    # ϕ ∈ [-180 180]
-    sign = x-> x>=0 ? 1 : -1
-    item1 = -sign.(mod2pi.(θ) .- π)
-    θ_ = mod.(θ.*item1 , π)
-    ϕ_ = item1 .* ϕ .|> mod2pi
-    r = 1 / 2(120pi) * (abs.(pattern.θ.(θ_, ϕ_)).^2 .+ abs.(pattern.ϕ.(θ_, ϕ_)).^2)
-    r = 4pi * r / radiated_power(pattern)
-    r = 10log10.(r)
+function ploting_pattern_2D(pattern::anten_pattern; θ = deg2rad.(-180:180), ϕ = 0)
+    (θ_,ϕ_) = mod_angle(θ,ϕ)
+    r = directivity(pattern).(θ_,ϕ_) |> x->10log10.(x)
     PlotlyJS.plot(rad2deg.(θ), r)
 end
 # ploting_pattern(global_pattern)
