@@ -124,10 +124,6 @@ function cal_pattern(point::Vector{anten_point}, point_I, θₜ, ϕₜ, k = k, �
     )
 end
 
-
-
-
-
 # order: the column number for θ,ϕ,Sθ,Sϕ, for HFSS is [2, 1, 4, 3]
 function anten_read(filepath, type = "hfss"; unit = "abs", factor = 1, order = [2, 1, 4, 3])
     #pick data from the dataframe
@@ -169,15 +165,17 @@ function anten_read(filepath, type = "hfss"; unit = "abs", factor = 1, order = [
         ϕ = translate2Interpolation(θ, ϕ, raw_anten.Gϕ)
     )
 end
-# watt/unit solid angle 2-12a
+# unit of radiation intensity is w/sr (watt/unit solid angle) refer to Antenna Theory 2-12a
 radiation_intensity = pattern -> [
     1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2 + abs(pattern.ϕ(θ, ϕ))^2)
     for (θ, ϕ) = zip(θ_grid, ϕ_grid)]
-# watt 2-13
+# unit of radiated power is w (watt) refer to Antenna Theory 2-13
 radiated_power = pattern -> P = [
     sin(θ) * U * 2pi * pi * 1 / size(ϕ_default, 1)size(θ_default, 1)
     for (U, θ) in zip(radiation_intensity(pattern), θ_grid)] |> sum
-# 2-16
+
+# no unit refer to Antenna Theory 2-16
 directivity = pattern -> 4pi * radiation_intensity(pattern) / radiated_power(pattern)
+# no unit refer to Antenna Theory 2-16
 gain = (pattern, inciden_power) -> 4pi * radiation_intensity(pattern) / inciden_power
 end
