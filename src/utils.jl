@@ -2,7 +2,8 @@ export
     scale2log,
     normlog,
     sph2cart,
-    cart2sph
+    cart2sph,
+    mod_angle
 
 # operation
 scale2log(x) = 20log10(x)
@@ -24,4 +25,14 @@ cart2sph(x, y, z) = begin
         ϕ = ϕ,
         r = r
     )
+end
+# convert to domain θ ∈[0°, 180°], ϕ∈ [-180°, 180°]
+# bad implementation
+mod_angle = (θ, ϕ) -> begin
+    sign = x-> x>=0 ? 1 : -1
+    item1 = -sign.(mod2pi.(θ) .- π)
+    θ_ = mod1.(θ.*item1 , π)
+    θ_[θ.==0] .= 0  
+    ϕ_ = item1 .* ϕ .|> mod2pi
+    (θ_,ϕ_)
 end
