@@ -4,16 +4,14 @@ using Antenna
 using Interpolations
 
 
-function ploting_point(p::Vector{anten_point})
+function plot_point(p::Vector{Vector{Float64}})
     expand_point = (vec_point) -> begin
-        ([i.p.x for i = vec_point],
-            [i.p.y for i = vec_point],
-            [i.p.z for i = vec_point])
+        ([i[1] for i = vec_point],
+            [i[2] for i = vec_point],
+            [i[3] for i = vec_point])
     end
     x, y, z = expand_point(p)
-
     max = maximum(sqrt.(x .^ 2 + y .^ 2 + z .^ 2))
-
     PlotlyJS.plot(PlotlyJS.scatter(
             x = x, y = y, z = z, text = 1:size(x, 1),
             type = "scatter3d",
@@ -29,28 +27,15 @@ function ploting_point(p::Vector{anten_point})
             scene_zaxis_range = [-max, max])
     )
 end
-function ploting_point(p::Vector{Vector{Float64}})
-    expand_point = (vec_point) -> begin
-        ([i[1] for i = vec_point],
-            [i[2] for i = vec_point],
-            [i[3] for i = vec_point])
+function plot_point(point::Vector{anten_point})
+    # expand tuple to vector
+    vec_vec_point = map(point) do i  
+        [i.p...] 
     end
-    x, y, z = expand_point(p)
-    max = maximum(sqrt.(x .^ 2 + y .^ 2 + z .^ 2))
-    PlotlyJS.plot(PlotlyJS.scatter(x = x, y = y, z = z,
-        type = "scatter3d",
-        marker = PlotlyJS.attr(
-            size = 2
-        ),
-        PlotlyJS.Layout(
-            xaxis_range = [-max, max],
-            yaxis_range = [-max, max],
-            zaxis_range = [-max, max]),
-        mode = "markers"))
+    plot_point(vec_vec_point)
 end
-# ploting_point(point)
 
-function ploting_pattern(pattern::anten_pattern; min = -40)
+function plot_pattern(pattern::anten_pattern; min = -40)
     r = directivity(pattern).(θ_grid, ϕ_grid)
     r_log_raw = 10log10.(r)
     # get maximum U and the direction
@@ -131,12 +116,11 @@ function ploting_pattern(pattern::anten_pattern; min = -40)
     )
 
 end
-function ploting_pattern_2D(pattern::anten_pattern; θ = deg2rad.(-180:180), ϕ = 0)
+function plot_pattern_2D(pattern::anten_pattern; θ = deg2rad.(-180:180), ϕ = 0)
     (θ_,ϕ_) = mod_angle(θ,ϕ)
     r = directivity(pattern).(θ_,ϕ_) |> x->10log10.(x)
     PlotlyJS.plot(rad2deg.(θ), r)
 end
-# ploting_pattern(global_pattern)
 
 function plot_E_vec_field(pattern::anten_pattern; mode = "1vec")
     # get point from default θ and ϕ
@@ -211,10 +195,59 @@ function plot_E_vec_field(pattern::anten_pattern; mode = "1vec")
     #             ),
     #              mode="markers"))
 end
+function plot_coordinate(vec_coord::Vector{Matrix{Float64}}, vec_point::Vector{Vector{Float64}})
+    u,v,w =[],[],[]
+    x,y,z = [], [], []
+    # copy point 3 times
+    foreach(1:3) do _
+        x_tmp,y_tmp,z_tmp =
+        map(1:3) do axis
+            map(x->x[axis], vec_point)
+        end   
+        x = [x;x_tmp]
+        y = [y;y_tmp]
+        z = [z;z_tmp]
+    end
+    # the i is the basis x,y,z
+    for i = 1:3
+        u_tmp,v_tmp,w_tmp = 
+        map(1:3) do axis
+            map(M->M[axis,i], vec_coord)
+        end
+        u = [u;u_tmp]
+        v = [v;v_tmp]
+        w = [w;w_tmp]
+    end
+    PlotlyJS.plot(
+        PlotlyJS.cone(
+            x = x,
+            y = y,
+            z = z,
+            u = u,
+            v = v,
+            w = w,
+            sizemode = "absolute",
+            sizeref = 1
+        ),
+        PlotlyJS.Layout(
+            scene=PlotlyJS.attr(
+                aspectmode="data",
+            ),
+            margin=PlotlyJS.attr(t=0, b=0, l=0, r=0)
+        )
+    )
+end
+
+function plot_coordinate(point::Vector{anten_point})
+    local_coord = map(x->x.local_coord, point)
+    position = map(i->[i.p...], point)
+    plot_coordinate(local_coord, position)
+end
 
 export
-    ploting_point,
-    ploting_pattern,
+    plot_point,
+    plot_pattern,
     plot_E_vec_field,
     plot_E_vec_field_test,
-    ploting_pattern_2D
+    plot_pattern_2D,
+    plot_coordinate

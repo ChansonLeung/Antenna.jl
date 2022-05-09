@@ -47,6 +47,7 @@ end
 function set_point_loc_coord!(point::anten_point, coord::Matrix{Float64})
     point.local_coord = coord
 end
+
 function set_point_pattern!(point::anten_point, pattern::anten_pattern)
     point.pattern = pattern
 end
@@ -72,13 +73,15 @@ function point_rectangle(; Nx, Ny, dx, dy, pattern)
     coeffi = [I(l, x * 0.5) / I(l, 0) * I(l, y * 0.5) / I(l, 0)
               for x in (1:Nx) .- (Nx + 1) / 2
               for y in (1:Ny) .- (Ny + 1) / 2]
-    vec_2_struct_point.(point, coeffi)
-    # vec_2_struct_point.(point, 1)   
+    # vec_2_struct_point.(point, coeffi)
+    vec_2_struct_point.(point, 1)   
 end
 
-function point_from_vec(; vec_point, pattern)
-    vec_2_struct_point = (vec) -> anten_point(p=(x=vec[1], y=vec[2], z=vec[3]), pattern=pattern)
-    vec_2_struct_point.(vec_point)
+
+function create_array(; vec_points, pattern=pattern_identity)
+    map(vec_points) do vec
+        anten_point(p=(x=vec[1], y=vec[2], z=vec[3]), pattern=pattern)
+    end
 end
 
 
@@ -118,7 +121,7 @@ export
     set_grid,
     set_point_loc_coord!,
     set_point_pattern!,
-    point_from_vec,
+    create_array,
     pattern_identity,
     point_rectangle,
     pattern_dipole
