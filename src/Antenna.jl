@@ -108,9 +108,11 @@ function cal_pattern(point::Vector{anten_point},  θₜ, ϕₜ, k=k, θ=θ_defau
     result_θ = zeros(ComplexF64, size(θ, 1), size(ϕ, 1))
     result_ϕ = zeros(ComplexF64, size(θ, 1), size(ϕ, 1))
     @floop for p_i in point
+        pattern_θ = p_i.pattern.θ
+        pattern_ϕ = p_i.pattern.ϕ
         tmp = p_i.coeffi * Iₛ(p_i.p, θₜ, ϕₜ, k) .* [AF(p_i.p, θi, ϕi, k)  for θi in θ_default, ϕi in ϕ_default]
-      @reduce result_θ .+=  tmp
-      @reduce result_ϕ .+=  tmp
+      @reduce result_θ .+=  tmp.* [pattern_θ(θi, ϕi)  for θi in θ_default, ϕi in ϕ_default]
+      @reduce result_ϕ .+=  tmp.* [pattern_ϕ(θi, ϕi)  for θi in θ_default, ϕi in ϕ_default]
     end
 
     anten_pattern(
