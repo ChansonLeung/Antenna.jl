@@ -9,6 +9,7 @@ using DataFrames
 using Match
 using Reexport
 using Memoize
+using FLoops
 
 include("type.jl")
 include("utils.jl")
@@ -28,12 +29,10 @@ export
 
 # array function
 # array factor
-AF(point, θ, ϕ, k) = exp(1im * k * (point.x * sin(θ)cos(ϕ) + point.y * sin(θ)sin(ϕ) + point.z * cos(θ)))
+AF(point, θ, ϕ, k) = exp(1im * k * (point[1] * sin(θ)cos(ϕ) + point[2] * sin(θ)sin(ϕ) + point[3] * cos(θ)))
 # current source
 Iₛ(point, θₜ, ϕₜ, k) = AF(point, θₜ, ϕₜ, k)^-1
 # Iₛ(point, θₜ, ϕₜ, k) = 1
-# pattern for one point
-Pi(point, Pe, θ, ϕ, θₜ, ϕₜ, k) = Pe(θ, ϕ)AF(point, θ, ϕ, k)
 # apply rotation
 # XXX untest
 rotate_vec_in_sph = (θ, ϕ, M) -> begin
@@ -93,7 +92,7 @@ end
 # calculate the global pattern
 # para∑ can be write like this
 # para∑(Pi(point:p, point:pattern.θ , θ, ϕ, θₜ, ϕₜ, k), (point, θ,ϕ, θₜ, ϕₜ,k))
-function cal_pattern(point::Vector{anten_point}, point_I, θₜ, ϕₜ, k=k, θ=θ_default, ϕ=ϕ_default)
+function cal_pattern(point::Vector{anten_point},  θₜ, ϕₜ, k=k, θ=θ_default, ϕ=ϕ_default)
 
     # # apply_rotation to the pattern
     # @time map(
@@ -105,23 +104,18 @@ function cal_pattern(point::Vector{anten_point}, point_I, θₜ, ϕₜ, k=k, θ=
     #     p.pattern = rotate_pattern(p.pattern, p.local_coord)
     # end
 
-
     # calculate result
-    result_θ = zeros(ComplexF64, size(θ, 1), size(ϕ, 1), size(point, 1))
-    result_ϕ = zeros(ComplexF64, size(θ, 1), size(ϕ, 1), size(point, 1))
-    Threads.@threads for (ind_point, point_i) = collect(enumerate(point))
-        for (i, θ) = enumerate(θ), (j, ϕ) = enumerate(ϕ)
-            result_θ[i, j, ind_point] = Iₛ(point_I[ind_point].p, θₜ, ϕₜ, k)Pi(point_i.p, point_i.pattern.θ, θ, ϕ, θₜ, ϕₜ, k) * point_i.coeffi
-            result_ϕ[i, j, ind_point] = Iₛ(point_I[ind_point].p, θₜ, ϕₜ, k)Pi(point_i.p, point_i.pattern.ϕ, θ, ϕ, θₜ, ϕₜ, k) * point_i.coeffi
-        end
+    result_θ = zeros(ComplexF64, size(θ, 1), size(ϕ, 1))
+    result_ϕ = zeros(ComplexF64, size(θ, 1), size(ϕ, 1))
+    @floop for p_i in point
+        tmp = p_i.coeffi * Iₛ(p_i.p, θₜ, ϕₜ, k) .* [AF(p_i.p, θi, ϕi, k)  for θi in θ_default, ϕi in ϕ_default]
+      @reduce result_θ .+=  tmp
+      @reduce result_ϕ .+=  tmp
     end
 
-    result_θ = sum(result_θ, dims=3)[:, :, 1] .|> abs
-    result_ϕ = sum(result_ϕ, dims=3)[:, :, 1] .|> abs
-
     anten_pattern(
-        θ=LinearInterpolation((θ_default, ϕ_default), result_θ),
-        ϕ=LinearInterpolation((θ_default, ϕ_default), result_ϕ),
+        θ=LinearInterpolation((θ_default, ϕ_default), result_θ .|>abs),
+        ϕ=LinearInterpolation((θ_default, ϕ_default), result_ϕ .|>abs),
     )
 end
 

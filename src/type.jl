@@ -37,9 +37,9 @@ pattern_dipole = anten_pattern(
 
 Base.@kwdef mutable struct anten_point
     #point
-    p::NamedTuple{(:x, :y, :z),Tuple{Float64,Float64,Float64}}
+    p::Vector{Float64}
     pattern::anten_pattern
-    coeffi::Number = 1
+    coeffi::ComplexF64  = 1
     #XXX maybe slow down the performance
     local_coord = Matrix(1.0I, 3, 3)
 end
@@ -62,17 +62,17 @@ end
 
 
 function point_rectangle(; Nx, Ny, dx, dy, pattern)
-    vec_2_struct_point = (p, coeffi) -> anten_point(p=(x=p[1], y=p[2], z=p[3]), pattern=pattern, coeffi=coeffi)
+    vec_2_struct_point = (p, coeffi) -> anten_point(p=p, pattern=pattern, coeffi=coeffi)
     point = [[dx * i, dy * j, 0] for i in 1:Nx for j in 1:Ny]
 
-    R0 = 10
-    n = 5
-    l = 3.5
+    # R0 = 10
+    # n = 5
+    # l = 3.5
+    # I = Taylor_Chebyshev_I(n, R0)
 
-    I = Taylor_Chebyshev_I(n, R0)
-    coeffi = [I(l, x * 0.5) / I(l, 0) * I(l, y * 0.5) / I(l, 0)
-              for x in (1:Nx) .- (Nx + 1) / 2
-              for y in (1:Ny) .- (Ny + 1) / 2]
+    # coeffi = [I(l, x * 0.5) / I(l, 0) * I(l, y * 0.5) / I(l, 0)
+    #           for x in (1:Nx) .- (Nx + 1) / 2
+    #           for y in (1:Ny) .- (Ny + 1) / 2]
     # vec_2_struct_point.(point, coeffi)
     vec_2_struct_point.(point, 1)   
 end
@@ -88,7 +88,7 @@ end
 
 
 c = 299792458
-const θ_default, ϕ_default = (LinRange(0, 180, 361), LinRange(-180, 180, 361)) .|> x -> deg2rad.(x)
+const θ_default, ϕ_default = (LinRange(0, 180, 360 +1), LinRange(-180, 180, 360  +1)) .|> x -> deg2rad.(x)
 const θ_grid, ϕ_grid = ([θ for θ in θ_default, ϕ in ϕ_default],
     [ϕ for θ in θ_default, ϕ in ϕ_default])
 
