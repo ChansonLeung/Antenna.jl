@@ -4,7 +4,7 @@ using Antenna
 using Interpolations
 
 
-function plot_point(p::Vector{Vector{Float64}})
+function plot_point(p::Vector{Vector{Float64}}; ret_trace=false)
     expand_point = (vec_point) -> begin
         ([i[1] for i = vec_point],
             [i[2] for i = vec_point],
@@ -12,7 +12,7 @@ function plot_point(p::Vector{Vector{Float64}})
     end
     x, y, z = expand_point(p)
     max = maximum(sqrt.(x .^ 2 + y .^ 2 + z .^ 2))
-    PlotlyJS.plot(PlotlyJS.scatter(
+    trace = PlotlyJS.scatter(
             x = x, y = y, z = z, text = 1:size(x, 1),
             type = "scatter3d",
             marker = PlotlyJS.attr(
@@ -20,19 +20,26 @@ function plot_point(p::Vector{Vector{Float64}})
             ),
             mode = "markers",
             hovertemplate = "x:%{x:.3f} <br>y:%{y:.3f} <br>x:%{z:.3f} <br>i:%{text} <extra></extra> ",
-        ),
-        PlotlyJS.Layout(
-            scene_xaxis_range = [-max, max],
-            scene_yaxis_range = [-max, max],
-            scene_zaxis_range = [-max, max])
+        )
+    layout_args = Dict(
+        :scene_xaxis_range => [-max, max],
+        :scene_yaxis_range => [-max, max],
+        :scene_zaxis_range => [-max, max]
     )
+    if ret_trace
+        trace, layout_args
+    else
+        fig = PlotlyJS.plot(trace)
+        PlotlyJS.relayout!(fig; layout_args...)
+        display(fig)
+    end
 end
-function plot_point(point::Vector{anten_point})
+function plot_point(point::Vector{anten_point}; ret_trace = false)
     # expand tuple to vector
     vec_vec_point = map(point) do i  
         [i.p...] 
     end
-    plot_point(vec_vec_point)
+    plot_point(vec_vec_point, ret_trace = ret_trace)
 end
 
 function plot_pattern(pattern::anten_pattern; min = -20, θ = θ_default, ϕ = ϕ_default, ret_trace=false)
@@ -81,10 +88,10 @@ function plot_pattern(pattern::anten_pattern; min = -20, θ = θ_default, ϕ = �
             # hovertemplate = "x:%{x},y:%{y},z:%{z}, <br>θ:%{customdata}",
         )
     layout_args = Dict(
-                "title" => PlotlyJS.attr(
+                :title => PlotlyJS.attr(
                     text = "最大方向性系数: $(round(max_U, digits=2)) dB in θ=$(max_theta)°,ϕ=$(max_phi)°"
                 ),
-                "scene" => PlotlyJS.attr(
+                :scene => PlotlyJS.attr(
                     xaxis = PlotlyJS.attr(
                         showgrid = false,
                         showticklabels = false,
@@ -111,9 +118,9 @@ function plot_pattern(pattern::anten_pattern; min = -20, θ = θ_default, ϕ = �
                         )
                     ),
                 ),
-                "scene_xaxis_range" => [-max, max],
-                "scene_yaxis_range" => [-max, max],
-                "scene_zaxis_range" => [-max, max]
+                :scene_xaxis_range => [-max, max],
+                :scene_yaxis_range => [-max, max],
+                :scene_zaxis_range => [-max, max]
             )
     if ret_trace
         trace,layout_args
@@ -135,19 +142,36 @@ function plot_pattern_2D(pattern::anten_pattern; θ = rad2deg.([-reverse(θ_defa
     end
 
 end
-function plot_pattern_all(pattern::anten_pattern; θ = rad2deg.([-reverse(θ_default);θ_default]), ϕ = 0)
+function plot_pattern_all(pattern::anten_pattern; θ = rad2deg.([-reverse(θ_default);θ_default]), ϕ = 0, point = false)
     trace_line = plot_pattern_2D(pattern, θ=θ, ϕ=ϕ, ret_trace=true)
-    trace_3d, _ = plot_pattern(pattern, ret_trace=true)
-    fig = PlotlyJS.make_subplots(
-        rows=2, cols=2,
-        specs=[
-            PlotlyJS.Spec(kind="xy", colspan=2) missing
-            PlotlyJS.Spec(kind="scene", colspan=2) missing 
-        ]
-    )
+    trace_3d, trace_3d_layout = plot_pattern(pattern, ret_trace=true)
+    fig = empty
+    if point isa Bool
+        fig = PlotlyJS.make_subplots(
+            rows=2, cols=2,
+            specs=[
+                PlotlyJS.Spec(kind="xy", colspan=2) missing
+                PlotlyJS.Spec(kind="scene", colspan=1) missing 
+            ]
+        )
+    else
+        fig = PlotlyJS.make_subplots(
+            rows=2, cols=2,
+            specs=[
+                PlotlyJS.Spec(kind="xy", colspan=2) missing
+                PlotlyJS.Spec(kind="scene") PlotlyJS.Spec(kind="scene")
+            ]
+        )
+        trace_point, trace_point_layout = plot_point(point, ret_trace=true)
+        PlotlyJS.add_trace!(fig, trace_point, row=2,col=2)
+        PlotlyJS.relayout!(fig, 
+            scene2_xaxis_range = trace_point_layout[:scene_xaxis_range],
+            scene2_yaxis_range = trace_point_layout[:scene_yaxis_range],
+            scene2_zaxis_range = trace_point_layout[:scene_zaxis_range],
+        )
+    end
     PlotlyJS.add_trace!(fig, trace_line, row=1,col=1)
     PlotlyJS.add_trace!(fig, trace_3d, row=2,col=1)
-    
     display(fig)
 end
 
