@@ -10,6 +10,7 @@ using Match
 using Reexport
 using Memoize
 using FLoops
+using Peaks
 
 include("type.jl")
 include("utils.jl")
@@ -24,6 +25,7 @@ export
     directivity,
     radiation_intensity,
     radiated_power,
+    SLL_maxgain,
     gain,
     Iₛ
 
@@ -51,13 +53,13 @@ rotate_vec_in_sph = (θ, ϕ, M) -> begin
 end
 rotate_vec_in_cart = (vec, M) -> M * vec
 vec_θ(θ, ϕ) = [cos(θ)cos(ϕ), cos(θ)sin(ϕ), -sin(θ)]
-vec_ϕ(θ, ϕ) = [-sin(ϕ), cos(ϕ), 0]
+vec_ϕ(θ, ϕ) = [-sin(ϕ), cos(ϕ), 0.0]
 
 
 rotate_pattern = (pattern::anten_pattern, coord::Matrix{Float64}) -> begin
 
-    θ_grid::Matrix{Float64} = [θ for θ in θ_default, ϕ in ϕ_default]
-    ϕ_grid::Matrix{Float64} = [ϕ for θ in θ_default, ϕ in ϕ_default]
+    # θ_grid::Matrix{Float64} = [θ for θ in θ_default, ϕ in ϕ_default]
+    # ϕ_grid::Matrix{Float64} = [ϕ for θ in θ_default, ϕ in ϕ_default]
 
     Gθ_grid::Matrix{Vector{ComplexF64}} = [
         begin
@@ -92,32 +94,34 @@ end
 # calculate the global pattern
 # para∑ can be write like this
 # para∑(Pi(point:p, point:pattern.θ , θ, ϕ, θₜ, ϕₜ, k), (point, θ,ϕ, θₜ, ϕₜ,k))
-function cal_pattern(point::Vector{anten_point},  θₜ, ϕₜ, k=k, θ=θ_default, ϕ=ϕ_default)
+function cal_pattern(point::Vector{anten_point},  θₜ, ϕₜ; k::Float64=k , θ=θ_default, ϕ=ϕ_default)
 
-    # # apply_rotation to the pattern
-    # @time map(
-    #     (point::anten_point) ->
-    #         point.pattern = rotate_pattern(point.pattern, point.local_coord),
-    #     point
-    # )
-    # @time "rotate" Threads.@threads for p in point 
-    #     p.pattern = rotate_pattern(p.pattern, p.local_coord)
-    # end
+    # apply_rotation to the pattern
+   @floop for p in point 
+        p.pattern = rotate_pattern(p.pattern, p.local_coord)
+    end
 
     # calculate result
-    result_θ = zeros(ComplexF64, size(θ, 1), size(ϕ, 1))
-    result_ϕ = zeros(ComplexF64, size(θ, 1), size(ϕ, 1))
-    @floop for p_i in point
+    result_θ = zeros(ComplexF64, length(θ), length(ϕ))
+    result_ϕ = zeros(ComplexF64, length(θ), length(ϕ))
+    tmp =  zeros(ComplexF64, length(θ), length(ϕ))
+    
+  for  p_i in point
         pattern_θ = p_i.pattern.θ
         pattern_ϕ = p_i.pattern.ϕ
-        tmp = p_i.coeffi * Iₛ(p_i.p, θₜ, ϕₜ, k) .* [AF(p_i.p, θi, ϕi, k)  for θi in θ_default, ϕi in ϕ_default]
-      @reduce result_θ .+=  tmp.* [pattern_θ(θi, ϕi)  for θi in θ_default, ϕi in ϕ_default]
-      @reduce result_ϕ .+=  tmp.* [pattern_ϕ(θi, ϕi)  for θi in θ_default, ϕi in ϕ_default]
+        co = p_i.coeffi * Iₛ(p_i.p, θₜ, ϕₜ, k)
+       @inbounds for index_c in  CartesianIndices(tmp)
+            θi = θ[index_c[1]]
+            ϕi = ϕ[index_c[2]]
+            tmp[index_c] = co * AF(p_i.p, θi, ϕi, k)
+        end
+        result_θ .+= tmp.* pattern_θ.(θ_grid,ϕ_grid)
+        result_ϕ .+= tmp.* pattern_ϕ.(θ_grid,ϕ_grid)
     end
 
     anten_pattern(
-        θ=LinearInterpolation((θ_default, ϕ_default), result_θ .|>abs),
-        ϕ=LinearInterpolation((θ_default, ϕ_default), result_ϕ .|>abs),
+        θ=LinearInterpolation((θ, ϕ), result_θ .|>abs),
+        ϕ=LinearInterpolation((θ, ϕ), result_ϕ .|>abs),
     )
 end
 
@@ -182,4 +186,13 @@ end
 gain = (pattern, inciden_power) -> function (θ, ϕ)
     4pi * radiation_intensity(pattern)(θ, ϕ) / inciden_power
 end
+
+
+function SLL_maxgain(pattern::anten_pattern;θ=0.0, ϕ=0.0)
+    d = directivity(pattern)
+    curve = [d((mod_angle_deg(θ,ϕ) .|>deg2rad)...) for θ in -100:100, ϕ in ϕ]
+    val = maxima(curve) |> sort! 
+    val[end]/val[end-1], val[end]
+end
+
 end
