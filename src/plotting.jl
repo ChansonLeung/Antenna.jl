@@ -35,7 +35,10 @@ function plot_point(point::Vector{anten_point})
     plot_point(vec_vec_point)
 end
 
-function plot_pattern(pattern::anten_pattern; min = -40)
+function plot_pattern(pattern::anten_pattern; min = -20, θ = θ_default, ϕ = ϕ_default, ret_trace=false)
+    θ_grid = [θ for θ in θ, ϕ in ϕ]
+    ϕ_grid = [ϕ for θ in θ, ϕ in ϕ]
+
     r = directivity(pattern).(θ_grid, ϕ_grid)
     r_log_raw = 10log10.(r)
     # get maximum U and the direction
@@ -61,8 +64,7 @@ function plot_pattern(pattern::anten_pattern; min = -40)
     z = [i.z for i = tulple_matrix]
 
     max = maximum(r_plot)
-    PlotlyJS.plot(
-        PlotlyJS.surface(
+    trace = PlotlyJS.surface(
             x = x, y = y, z = z,
             # customdata = [[θ,ϕ] for (θ,ϕ) in zip(rad2deg.(θ), rad2deg.(ϕ))],
             text = map(
@@ -77,49 +79,76 @@ function plot_pattern(pattern::anten_pattern; min = -40)
             colorscale = "Jet",
             # hovertemplate = "x:%{x},y:%{y},z:%{z}, <br>θ:%{customdata} <br>ϕ:%{customdata[1]} ",
             # hovertemplate = "x:%{x},y:%{y},z:%{z}, <br>θ:%{customdata}",
-        ),
-        PlotlyJS.Layout(
-            title = PlotlyJS.attr(
-                text = "最大方向性系数: $(round(max_U, digits=2)) dB in θ=$(max_theta)°,ϕ=$(max_phi)°"
-            ),
-            scene = PlotlyJS.attr(
-                xaxis = PlotlyJS.attr(
-                    showgrid = false,
-                    showticklabels = false,
-                    showbackground = false,
-                    showaxeslabels = false,
-                    # title= PlotlyJS.attr(
-                    #     text=""
-                    # )
-                ),
-                yaxis = PlotlyJS.attr(
-                    showgrid = false,
-                    showticklabels = false,
-                    showbackground = false,
-                    # title= PlotlyJS.attr(
-                    #     text=""
-                    # )
-                ),
-                zaxis = PlotlyJS.attr(
-                    showgrid = false,
-                    # showbackground = false,
-                    showticklabels = false,
-                    title = PlotlyJS.attr(
-                        text = ""
-                    )
-                ),
-            ),
-            scene_xaxis_range = [-max, max],
-            scene_yaxis_range = [-max, max],
-            scene_zaxis_range = [-max, max]
         )
-    )
+    layout_args = Dict(
+                "title" => PlotlyJS.attr(
+                    text = "最大方向性系数: $(round(max_U, digits=2)) dB in θ=$(max_theta)°,ϕ=$(max_phi)°"
+                ),
+                "scene" => PlotlyJS.attr(
+                    xaxis = PlotlyJS.attr(
+                        showgrid = false,
+                        showticklabels = false,
+                        showbackground = false,
+                        showaxeslabels = false,
+                        # title= PlotlyJS.attr(
+                        #     text=""
+                        # )
+                    ),
+                    yaxis = PlotlyJS.attr(
+                        showgrid = false,
+                        showticklabels = false,
+                        showbackground = false,
+                        # title= PlotlyJS.attr(
+                        #     text=""
+                        # )
+                    ),
+                    zaxis = PlotlyJS.attr(
+                        showgrid = false,
+                        # showbackground = false,
+                        showticklabels = false,
+                        title = PlotlyJS.attr(
+                            text = ""
+                        )
+                    ),
+                ),
+                "scene_xaxis_range" => [-max, max],
+                "scene_yaxis_range" => [-max, max],
+                "scene_zaxis_range" => [-max, max]
+            )
+    if ret_trace
+        trace,layout_args
+    else
+        PlotlyJS.plot(
+            trace, PlotlyJS.Layout(layout_args)
+        )
+    end
 
 end
-function plot_pattern_2D(pattern::anten_pattern; θ = deg2rad.(-180:180), ϕ = 0)
-    (θ_,ϕ_) = mod_angle(θ,ϕ)
+function plot_pattern_2D(pattern::anten_pattern; θ = rad2deg.([-reverse(θ_default);θ_default]), ϕ = 0, ret_trace=false)
+    θ_ = [mod_angle_deg(θ,ϕ)[1] |>deg2rad for θ in θ]
+    ϕ_ = [mod_angle_deg(θ,ϕ)[2] |>deg2rad for θ in θ]
     r = directivity(pattern).(θ_,ϕ_) |> x->10log10.(x)
-    PlotlyJS.plot(rad2deg.(θ), r)
+    if ret_trace 
+        PlotlyJS.scatter(x=θ,y=r, mode="lines")
+    else
+        PlotlyJS.plot(θ, r)
+    end
+
+end
+function plot_pattern_all(pattern::anten_pattern; θ = rad2deg.([-reverse(θ_default);θ_default]), ϕ = 0)
+    trace_line = plot_pattern_2D(pattern, θ=θ, ϕ=ϕ, ret_trace=true)
+    trace_3d, _ = plot_pattern(pattern, ret_trace=true)
+    fig = PlotlyJS.make_subplots(
+        rows=2, cols=2,
+        specs=[
+            PlotlyJS.Spec(kind="xy", colspan=2) missing
+            PlotlyJS.Spec(kind="scene", colspan=2) missing 
+        ]
+    )
+    PlotlyJS.add_trace!(fig, trace_line, row=1,col=1)
+    PlotlyJS.add_trace!(fig, trace_3d, row=2,col=1)
+    
+    display(fig)
 end
 
 function plot_E_vec_field(pattern::anten_pattern; mode = "1vec")
@@ -250,4 +279,5 @@ export
     plot_E_vec_field,
     plot_E_vec_field_test,
     plot_pattern_2D,
-    plot_coordinate
+    plot_coordinate,
+    plot_pattern_all

@@ -80,7 +80,7 @@ end
 
 function create_array(; vec_points, pattern=pattern_identity)
     map(vec_points) do vec
-        anten_point(p=(x=vec[1], y=vec[2], z=vec[3]), pattern=pattern)
+        anten_point(p=vec, pattern=pattern)
     end
 end
 
@@ -88,7 +88,8 @@ end
 
 
 c = 299792458
-const θ_default, ϕ_default = (LinRange(0, 180, 360 +1), LinRange(-180, 180, 360  +1)) .|> x -> deg2rad.(x)
+const θ_default, ϕ_default = (LinRange(0, 180, 720 +1), LinRange(-180, 180, 180  +1)) .|> x -> deg2rad.(x)
+# const θ_default, ϕ_default = (LinRange(0, 180, 360 +1), [-180,  0, ]) .|> x -> deg2rad.(x)
 const θ_grid, ϕ_grid = ([θ for θ in θ_default, ϕ in ϕ_default],
     [ϕ for θ in θ_default, ϕ in ϕ_default])
 
@@ -104,10 +105,7 @@ function set_param(; f)
     global k = 2pi / λ
     (f=f, λ=λ, k=k)
 end
-function set_grid(θ, ϕ)
-    global θ_grid = θ
-    global ϕ_grid = ϕ
-end
+
 export
     anten_point,
     anten_pattern,
@@ -118,7 +116,6 @@ export
     λ,
     k,
     set_param,
-    set_grid,
     set_point_loc_coord!,
     set_point_pattern!,
     create_array,
