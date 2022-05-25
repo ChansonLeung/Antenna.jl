@@ -20,11 +20,12 @@ function plot_point(p::Vector{Vector{Float64}}; ret_trace=false)
             ),
             mode = "markers",
             hovertemplate = "x:%{x:.3f} <br>y:%{y:.3f} <br>x:%{z:.3f} <br>i:%{text} <extra></extra> ",
+            showlegend = false
         )
     layout_args = Dict(
         :scene_xaxis_range => [-max, max],
         :scene_yaxis_range => [-max, max],
-        :scene_zaxis_range => [-max, max]
+        :scene_zaxis_range => [-max, max],
     )
     if ret_trace
         trace, layout_args
@@ -136,7 +137,7 @@ function plot_pattern_2D(pattern::anten_pattern; θ = rad2deg.([-reverse(θ_defa
     ϕ_ = [mod_angle_deg(θ,ϕ)[2] |>deg2rad for θ in θ]
     r = directivity(pattern).(θ_,ϕ_) |> x->10log10.(x)
     if ret_trace 
-        PlotlyJS.scatter(x=θ,y=r, mode="lines")
+        PlotlyJS.scatter(x=θ,y=r, mode="lines", showlegend = false)
     else
         PlotlyJS.plot(θ, r)
     end
