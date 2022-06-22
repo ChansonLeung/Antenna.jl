@@ -15,3 +15,6 @@ Memoize = "c03570c3-d221-55d1-a50c-7939bbd78826"
 Peaks = "18e31ff7-3703-566c-8e60-38913d67486b"
 PlotlyJS = "f0f68f2c-4968-5e81-91da-67840de0976a"
 Reexport = "189a3867-3050-52da-a836-e630ba90ab69"
+
+[compat]
+Chain = "0.5"
