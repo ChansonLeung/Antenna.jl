@@ -101,7 +101,7 @@ f = 1
 k = 1
 
 function set_param(; f)
-    λ = c / f
+    global λ = c / f
     global k = 2pi / λ
     (f=f, λ=λ, k=k)
 end
