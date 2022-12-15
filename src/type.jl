@@ -88,20 +88,24 @@ end
 
 
 c = 299792458
-const θ_default, ϕ_default = (LinRange(0, 180, 720 +1), LinRange(-180, 180, 180  +1)) .|> x -> deg2rad.(x)
+θ_default::Vector{Float64}, ϕ_default::Vector{Float64} = (LinRange(0, 180, 180 +1), LinRange(-180, 180, 360+1)) .|> 
+                                x -> deg2rad.(x)
 # const θ_default, ϕ_default = (LinRange(0, 180, 360 +1), [-180,  0, ]) .|> x -> deg2rad.(x)
-const θ_grid, ϕ_grid = ([θ for θ in θ_default, ϕ in ϕ_default],
+θ_grid::Matrix{Float64}, ϕ_grid::Matrix{Float64} = ([θ for θ in θ_default, ϕ in ϕ_default],
     [ϕ for θ in θ_default, ϕ in ϕ_default])
+
+# const cart_grid = [[sph2cart(θ,ϕ,1)...] for θ in θ_default, ϕ in ϕ_default]
 
 # θ_default, ϕ_default = ([0,90], [0,0]) .|> x -> deg2rad.(x)
 
 
-f = 1
-λ = 1
-k = 1
+f::Float64 = 1
+λ::Float64 = 1
+k::Float64 = 1
 
-function set_param(; f)
-    λ = c / f
+function set_param(; freq)
+    global f = freq
+    global λ = c / f
     global k = 2pi / λ
     (f=f, λ=λ, k=k)
 end
@@ -111,6 +115,7 @@ export
     anten_pattern,
     θ_default, ϕ_default,
     θ_grid, ϕ_grid,
+    # cart_grid,
     c,
     f,
     λ,
