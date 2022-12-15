@@ -15,19 +15,25 @@ using Peaks
 include("type.jl")
 include("utils.jl")
 include("plotting.jl")
+include("read_re_file.jl")
 
 export
     cal_pattern,
     anten_read,
     rotate_vec_in_sph,
-    rotate_vec_in_cart,
+    rotate_vec_in_sph!,
     rotate_pattern,
+    rotate_pattern!,
     directivity,
     radiation_intensity,
     radiated_power,
     SLL_maxgain,
     gain,
-    Iₛ
+    Iₛ,
+    vec_θ,
+    vec_θ_static,
+    vec_ϕ,
+    vec_ϕ_static
 
 # array function
 # array factor
@@ -37,10 +43,10 @@ Iₛ(point, θₜ, ϕₜ, k) = AF(point, θₜ, ϕₜ, k)^-1
 # Iₛ(point, θₜ, ϕₜ, k) = 1
 # apply rotation
 # XXX untest
-rotate_vec_in_sph = (θ, ϕ, M) -> begin
-    x, y, z = sph2cart(θ, ϕ, 1)
-    vec = M * [x, y, z]
-    θ1, ϕ1, .. = cart2sph(vec[1], vec[2], vec[3])
+function rotate_vec_in_sph(θ, ϕ, M)
+    point = sph2cart(θ, ϕ, 1)
+    vec = M * point
+    θ1, ϕ1, r = cart2sph(vec[1], vec[2], vec[3])
     # XXX not a elegen way to aviod lossing information
     # what if there is a rotation, boudary condition is when θ = 0
     # XXXX need a mapping function
@@ -51,30 +57,43 @@ rotate_vec_in_sph = (θ, ϕ, M) -> begin
     end
     (θ1, ϕ1)
 end
-rotate_vec_in_cart = (vec, M) -> M * vec
+
+function rotate_vec_in_sph!(point, M)
+    sph2cart!(point, point[1], point[2], 1)
+    mul!(point, M, @SArray [point[1], point[2], point[3]])
+    cart2sph!(point, point[1],point[2], point[3])
+end
+
 vec_θ(θ, ϕ) = [cos(θ)cos(ϕ), cos(θ)sin(ϕ), -sin(θ)]
+vec_θ_static(θ, ϕ) = @SArray [cos(θ)cos(ϕ), cos(θ)sin(ϕ), -sin(θ)]
+# vec_θ(θ, ϕ) = [sin(θ)cos(ϕ), sin(θ)sin(ϕ), -sin(θ)]
+# vec_θ_static(θ, ϕ) = @SArray [sin(θ)cos(ϕ), sin(θ)sin(ϕ), -sin(θ)]
+
 vec_ϕ(θ, ϕ) = [-sin(ϕ), cos(ϕ), 0.0]
+vec_ϕ_static(θ, ϕ) = @SArray [-sin(ϕ), cos(ϕ), 0.0]
 
 
-rotate_pattern = (pattern::anten_pattern, coord::Matrix{Float64}) -> begin
+function rotate_pattern(pattern::anten_pattern, coord::Matrix{Float64})
 
     # θ_grid::Matrix{Float64} = [θ for θ in θ_default, ϕ in ϕ_default]
     # ϕ_grid::Matrix{Float64} = [ϕ for θ in θ_default, ϕ in ϕ_default]
+    
+    inverse_rotate_grid = rotate_vec_in_sph.(θ_grid, ϕ_grid, [coord'])
+    inv_rot_θ = map(x->x[1], inverse_rotate_grid)
+    inv_rot_ϕ = map(x->x[2], inverse_rotate_grid)
 
     Gθ_grid::Matrix{Vector{ComplexF64}} = [
         begin
-            θ, ϕ = rotate_vec_in_sph(θ, ϕ, coord')
-            (coord * vec_θ(θ, ϕ)) * pattern.θ(θ, ϕ)
+            (coord*vec_θ(θ, ϕ)) * pattern.θ(θ, ϕ)
         end
-        for (θ, ϕ) = zip(θ_grid, ϕ_grid)
+        for (θ, ϕ) = zip(inv_rot_θ, inv_rot_ϕ)
     ]
 
     Gϕ_grid::Matrix{Vector{ComplexF64}} = [
         begin
-            θ, ϕ = rotate_vec_in_sph(θ, ϕ, coord')
-            (coord * vec_ϕ(θ, ϕ)) * pattern.ϕ(θ, ϕ)
+            (coord*vec_ϕ(θ, ϕ)) * pattern.ϕ(θ, ϕ)
         end
-        for (θ, ϕ) = zip(θ_grid, ϕ_grid)
+        for (θ, ϕ) = zip(inv_rot_θ, inv_rot_ϕ)
     ]
 
     vec_θ₁_map_grid::Matrix{Vector{Float64}} = [vec_θ(θ, ϕ) for (θ, ϕ) = zip(θ_grid, ϕ_grid)]
@@ -86,27 +105,86 @@ rotate_pattern = (pattern::anten_pattern, coord::Matrix{Float64}) -> begin
          (dot.(Gθ_grid, vec_ϕ₁_map_grid))
 
     result = anten_pattern(
-        θ=LinearInterpolation((θ_default, ϕ_default), Gθ),
-        ϕ=LinearInterpolation((θ_default, ϕ_default), Gϕ)
+        θ=linear_interpolation((θ_default, ϕ_default), Gθ, extrapolation_bc = Flat()),
+        ϕ=linear_interpolation((θ_default, ϕ_default), Gϕ, extrapolation_bc = Flat())
+    )
+end
+function rotate_pattern!(pattern::anten_pattern, coord::Matrix{Float64})
+    # convert 3xMxN matrix to vector{eltpe, (M*N)}
+    point_mode(grid) = reshape(grid, 3,:)|>eachcol
+    vec2grid(vec) = reshape(vec, size(ϕ_grid)...)
+
+    inv_rot_grid = hcat(vec(θ_grid), vec(ϕ_grid), ones(length(ϕ_grid)))
+    for row in eachrow(inv_rot_grid)
+        rotate_vec_in_sph!(row, coord')
+    end
+
+    inv_rot_θ = @view inv_rot_grid[:,1]
+    inv_rot_ϕ = @view inv_rot_grid[:,2]
+    inv_rot_θ = reshape(inv_rot_θ, size(θ_grid))
+    inv_rot_ϕ = reshape(inv_rot_ϕ, size(ϕ_grid))
+
+    Gainθ_grid = pattern.θ.(inv_rot_θ,inv_rot_ϕ)
+    vec_Gainθ_grid = zeros(3,size(inv_rot_θ)...)
+    for (point,θ, ϕ) in zip(point_mode(vec_Gainθ_grid), vec(inv_rot_θ), vec(inv_rot_ϕ))
+        point .= vec_θ_static(θ,ϕ)
+        mul!(point, coord, @SArray[point[1], point[2], point[3]])
+    end
+    Gainθ_grid = vec_Gainθ_grid .* reshape(Gainθ_grid,1,size(Gainθ_grid)... )
+
+
+    Gainϕ_grid = pattern.ϕ.(inv_rot_θ,inv_rot_ϕ)
+    #preallocate memory
+    vec_Gainϕ_grid = zeros(3,size(inv_rot_ϕ)...)
+    for (point,θ, ϕ) in zip(point_mode(vec_Gainϕ_grid), vec(inv_rot_θ), vec(inv_rot_ϕ))
+        point .= vec_ϕ_static(θ,ϕ)
+        mul!(point, coord, @SArray[point[1], point[2], point[3]])
+    end
+    Gainϕ_grid = vec_Gainϕ_grid  .*reshape(Gainϕ_grid,1,size(Gainϕ_grid)...)
+
+    #preallocate memory
+    vec_θ₁_map_grid = zeros(3,size(θ_grid)...)
+    vec_ϕ₁_map_grid = zeros(3,size(θ_grid)...)
+    for (point_θ, point_ϕ, θ, ϕ) in zip(point_mode(vec_θ₁_map_grid), point_mode(vec_ϕ₁_map_grid),θ_grid, ϕ_grid)
+        point_θ .= vec_θ_static(θ,ϕ)
+        point_ϕ .= vec_ϕ_static(θ,ϕ)
+    end
+
+    prealloc_to_grid = vec2grid ∘ collect ∘ point_mode
+    Gθ = (dot.(Gainθ_grid |>prealloc_to_grid, vec_θ₁_map_grid|>prealloc_to_grid)) .+
+         (dot.(Gainϕ_grid |>prealloc_to_grid, vec_θ₁_map_grid|>prealloc_to_grid))
+    Gϕ = (dot.(Gainϕ_grid |>prealloc_to_grid, vec_ϕ₁_map_grid|>prealloc_to_grid)) .+
+         (dot.(Gainθ_grid |>prealloc_to_grid, vec_ϕ₁_map_grid|>prealloc_to_grid))
+
+    result = anten_pattern(
+        θ=linear_interpolation((θ_default, ϕ_default), Gθ, extrapolation_bc = Flat()),
+        ϕ=linear_interpolation((θ_default, ϕ_default), Gϕ, extrapolation_bc = Flat())
     )
 end
 
 # calculate the global pattern
 # para∑ can be write like this
 # para∑(Pi(point:p, point:pattern.θ , θ, ϕ, θₜ, ϕₜ, k), (point, θ,ϕ, θₜ, ϕₜ,k))
-function cal_pattern(point::Vector{anten_point},  θₜ, ϕₜ; k::Float64=k , θ=θ_default, ϕ=ϕ_default)
+function cal_pattern(point::Vector{anten_point},  θₜ::Float64, ϕₜ::Float64; k::Float64=k , θ=θ_default, ϕ=ϕ_default, spin=false)
 
     # apply_rotation to the pattern
-   @floop for p in point 
-        p.pattern = rotate_pattern(p.pattern, p.local_coord)
+    # point = []
+    # @floop for p in point_in
+    #     push!(point,  anten_point(p = p.p, pattern =rotate_pattern!(p.pattern, p.local_coord)))
+    # end
+
+    spin && @floop for p in point
+        p.pattern = rotate_pattern!(p.pattern, p.local_coord)
     end
+
+
 
     # calculate result
     result_θ = zeros(ComplexF64, length(θ), length(ϕ))
     result_ϕ = zeros(ComplexF64, length(θ), length(ϕ))
     tmp =  zeros(ComplexF64, length(θ), length(ϕ))
     
-  for  p_i in point
+    for p_i in point
         pattern_θ = p_i.pattern.θ
         pattern_ϕ = p_i.pattern.ϕ
         co = p_i.coeffi * Iₛ(p_i.p, θₜ, ϕₜ, k)
@@ -118,52 +196,10 @@ function cal_pattern(point::Vector{anten_point},  θₜ, ϕₜ; k::Float64=k , �
         result_θ .+= tmp.* pattern_θ.(θ_grid,ϕ_grid)
         result_ϕ .+= tmp.* pattern_ϕ.(θ_grid,ϕ_grid)
     end
-
+    
     anten_pattern(
-        θ=LinearInterpolation((θ, ϕ), result_θ .|>abs),
-        ϕ=LinearInterpolation((θ, ϕ), result_ϕ .|>abs),
-    )
-end
-
-# order: the column number for θ,ϕ,Sθ,Sϕ, for HFSS is [2, 1, 4, 3]
-function anten_read(filepath, type="hfss"; unit="abs", factor=1, order=[2, 1, 4, 3])
-    #pick data from the dataframe
-    unit_corrector = unit -> begin
-        if unit == "db"
-            x -> 10^(x / 10) |> sqrt
-        else
-            x -> x * factor
-        end
-    end
-    convert_from_hfss = x -> begin
-        (
-            θ=deg2rad.(x[:, order[1]]),
-            ϕ=deg2rad.(x[:, order[2]]),
-            Gθ=x[:, order[3]] .|> unit_corrector(unit),
-            Gϕ=x[:, order[4]] .|> unit_corrector(unit)
-        )
-    end
-
-    # read file
-    raw_anten = CSV.File(filepath) |> DataFrame |>
-                @match type begin
-                    "hfss" => convert_from_hfss
-                    _ => convert_from_hfss
-                end
-
-    _3Dvec_2_1Dvec = x -> LinRange(minimum(x), maximum(x), size(unique(x), 1))
-
-    translate2Interpolation = (θ, ϕ, G) -> @chain begin
-        reshape(G, (size(ϕ, 1), size(θ, 1)))
-        permutedims((order[1], order[2]))
-        LinearInterpolation((θ, ϕ), _)
-    end
-    θ = _3Dvec_2_1Dvec(raw_anten.θ)
-    ϕ = _3Dvec_2_1Dvec(raw_anten.ϕ)
-
-    anten_pattern(
-        θ=translate2Interpolation(θ, ϕ, raw_anten.Gθ),
-        ϕ=translate2Interpolation(θ, ϕ, raw_anten.Gϕ)
+        θ=linear_interpolation((θ, ϕ), result_θ .|>abs, extrapolation_bc = Flat()) ,
+        ϕ=linear_interpolation((θ, ϕ), result_ϕ .|>abs, extrapolation_bc = Flat()) 
     )
 end
 
