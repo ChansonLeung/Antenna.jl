@@ -2,7 +2,50 @@ import PlotlyJS
 using LinearAlgebra
 using Antenna
 using Interpolations
+using Plots
+using Lazy
 
+
+@recipe f(::Type{anten_point}, point::anten_point) = point.pattern
+
+@recipe f(::Type{Vector{anten_point}}, points::Vector{anten_point}) = getfield.(points, :p)
+
+@recipe function f(pattern::anten_pattern)
+    xlabel --> "u"
+    ylabel --> "v"
+
+    uv_grid =[(u,v) for u in LinRange(-1,1,361), v in LinRange(-1,1,361)] 
+    u = @> uv_grid getindex.(1)
+    v = @> uv_grid getindex.(2)
+    w(u,v) =  u^2+v^2 <=1 ? sqrt(1-u^2-v^2) : 0.
+    w = w.(u,v)
+
+
+    θ = @. acos(w/sqrt(u^2+v^2+w^2))
+    ϕ = @. atan(v,u)
+    r = @> directivity(pattern).(θ, ϕ)  .|> x->10log10(x)
+
+    @. r[u^2+v^2>1] = NaN
+
+    clims --> (-20, maximum(r))
+    @series begin
+        seriestype := :heatmap 
+        (u[:,1], v[1,:], r)
+    end
+    @series begin
+        seriestype := :contour 
+        (u[:,1],v[1,:],r)
+    end
+
+end
+
+@recipe function f(points::Vector{Vector{Float64}};)
+    seriestype-->:scatter3d
+    markersize-->1
+    (getindex.(points,1),
+    getindex.(points,2),
+    getindex.(points,3))
+end
 
 function plot_point(p::Vector{Vector{Float64}}; ret_trace=false)
     expand_point = (vec_point) -> begin
@@ -67,9 +110,9 @@ function plot_pattern(pattern::anten_pattern; min = -20, θ = θ_default, ϕ = �
     θ = [θ for (θ, ϕ) = zip(θ_grid, ϕ_grid)]
     ϕ = [ϕ for (θ, ϕ) = zip(θ_grid, ϕ_grid)]
     tulple_matrix = sph2cart.(θ, ϕ, r_plot)
-    x = [i.x for i = tulple_matrix]
-    y = [i.y for i = tulple_matrix]
-    z = [i.z for i = tulple_matrix]
+    x = [i[1] for i = tulple_matrix]
+    y = [i[2] for i = tulple_matrix]
+    z = [i[3] for i = tulple_matrix]
 
     max = maximum(r_plot)
     trace = PlotlyJS.surface(

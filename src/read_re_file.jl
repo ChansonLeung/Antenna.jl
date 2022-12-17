@@ -6,25 +6,23 @@ using Interpolations
 export 
     read_hfss_pattern
 
-extract_theta_phi(filename) = begin
-    CSV.File(filename) |>
-    DataFrame |>
-    Matrix
-end
-
 function read_hfss_pattern(name = "test/dataset/rE_theta_phi_dipole.csv", mode=:polar)
-    data_csv = extract_theta_phi(name) |>
-            x -> reshape(x, 361, 181, :)
+
+    data_csv = CSV.read(name, DataFrame)
 
     if mode == :polar
         # 1     2      3            4           5           6
         # phi theta phi_re[mv] phi_im[mv] theta_re[mv] theta_im[mv]
+
         (phi_grid,
-            theta_grid,
-            rE_phi_re,
-            rE_phi_im,
-            rE_theta_re,
-            rE_theta_im) = collect(eachslice(data_csv, dims=3))
+        theta_grid,
+        rE_phi_re,
+        rE_phi_im,
+        rE_theta_re,
+        rE_theta_im) = getindex.([data_csv], !,["Phi[deg]","Theta[deg]","re(rEPhi)[mV]","im(rEPhi)[mV]","re(rETheta)[mV]","im(rETheta)[mV]"]) .|> 
+                    x->Vector(Float64.(x)) |>
+                    x->reshape(x,361,181)
+
 
         rE_phi = rE_phi_re + rE_phi_im * 1im |>
                 x -> permutedims(x, [2, 1])/1000
