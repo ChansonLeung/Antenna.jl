@@ -12,6 +12,9 @@ using Memoize
 using FLoops
 using Peaks
 
+using LoopVectorization
+using Tullio
+
 include("type.jl")
 include("utils.jl")
 include("plotting.jl")
@@ -66,8 +69,6 @@ end
 
 vec_θ(θ, ϕ) = [cos(θ)cos(ϕ), cos(θ)sin(ϕ), -sin(θ)]
 vec_θ_static(θ, ϕ) = @SArray [cos(θ)cos(ϕ), cos(θ)sin(ϕ), -sin(θ)]
-# vec_θ(θ, ϕ) = [sin(θ)cos(ϕ), sin(θ)sin(ϕ), -sin(θ)]
-# vec_θ_static(θ, ϕ) = @SArray [sin(θ)cos(ϕ), sin(θ)sin(ϕ), -sin(θ)]
 
 vec_ϕ(θ, ϕ) = [-sin(ϕ), cos(ϕ), 0.0]
 vec_ϕ_static(θ, ϕ) = @SArray [-sin(ϕ), cos(ϕ), 0.0]
@@ -75,8 +76,6 @@ vec_ϕ_static(θ, ϕ) = @SArray [-sin(ϕ), cos(ϕ), 0.0]
 
 function rotate_pattern(pattern::anten_pattern, coord::Matrix{Float64})
 
-    # θ_grid::Matrix{Float64} = [θ for θ in θ_default, ϕ in ϕ_default]
-    # ϕ_grid::Matrix{Float64} = [ϕ for θ in θ_default, ϕ in ϕ_default]
     
     inverse_rotate_grid = rotate_vec_in_sph.(θ_grid, ϕ_grid, [coord'])
     inv_rot_θ = map(x->x[1], inverse_rotate_grid)
@@ -114,7 +113,9 @@ function rotate_pattern!(pattern::anten_pattern, coord::Matrix{Float64})
     point_mode(grid) = reshape(grid, 3,:)|>eachcol
     vec2grid(vec) = reshape(vec, size(ϕ_grid)...)
 
+
     inv_rot_grid = hcat(vec(θ_grid), vec(ϕ_grid), ones(length(ϕ_grid)))
+# rotate grid
     for row in eachrow(inv_rot_grid)
         rotate_vec_in_sph!(row, coord')
     end
@@ -123,7 +124,7 @@ function rotate_pattern!(pattern::anten_pattern, coord::Matrix{Float64})
     inv_rot_ϕ = @view inv_rot_grid[:,2]
     inv_rot_θ = reshape(inv_rot_θ, size(θ_grid))
     inv_rot_ϕ = reshape(inv_rot_ϕ, size(ϕ_grid))
-
+# ------
     Gainθ_grid = pattern.θ.(inv_rot_θ,inv_rot_ϕ)
     vec_Gainθ_grid = zeros(3,size(inv_rot_θ)...)
     for (point,θ, ϕ) in zip(point_mode(vec_Gainθ_grid), vec(inv_rot_θ), vec(inv_rot_ϕ))
@@ -132,7 +133,7 @@ function rotate_pattern!(pattern::anten_pattern, coord::Matrix{Float64})
     end
     Gainθ_grid = vec_Gainθ_grid .* reshape(Gainθ_grid,1,size(Gainθ_grid)... )
 
-
+# ------
     Gainϕ_grid = pattern.ϕ.(inv_rot_θ,inv_rot_ϕ)
     #preallocate memory
     vec_Gainϕ_grid = zeros(3,size(inv_rot_ϕ)...)
@@ -166,40 +167,33 @@ end
 # para∑ can be write like this
 # para∑(Pi(point:p, point:pattern.θ , θ, ϕ, θₜ, ϕₜ, k), (point, θ,ϕ, θₜ, ϕₜ,k))
 function cal_pattern(point::Vector{anten_point},  θₜ::Float64, ϕₜ::Float64; k::Float64=k , θ=θ_default, ϕ=ϕ_default, spin=false)
-
-    # apply_rotation to the pattern
-    # point = []
-    # @floop for p in point_in
-    #     push!(point,  anten_point(p = p.p, pattern =rotate_pattern!(p.pattern, p.local_coord)))
-    # end
-
     spin && @floop for p in point
         p.pattern = rotate_pattern!(p.pattern, p.local_coord)
     end
-
-
-
-    # calculate result
-    result_θ = zeros(ComplexF64, length(θ), length(ϕ))
-    result_ϕ = zeros(ComplexF64, length(θ), length(ϕ))
-    tmp =  zeros(ComplexF64, length(θ), length(ϕ))
     
-    for p_i in point
-        pattern_θ = p_i.pattern.θ
-        pattern_ϕ = p_i.pattern.ϕ
-        co = p_i.coeffi * Iₛ(p_i.p, θₜ, ϕₜ, k)
-       @inbounds for index_c in  CartesianIndices(tmp)
-            θi = θ[index_c[1]]
-            ϕi = ϕ[index_c[2]]
-            tmp[index_c] = co * AF(p_i.p, θi, ϕi, k)
-        end
-        result_θ .+= tmp.* pattern_θ.(θ_grid,ϕ_grid)
-        result_ϕ .+= tmp.* pattern_ϕ.(θ_grid,ϕ_grid)
-    end
+    positions = getfield.(point, :p)       
+    coeffi    = getfield.(point, :coeffi)    
+    patterns  = getfield.(point, :pattern)
+    pattern_θ = getfield.(patterns, :θ)    
+    pattern_ϕ = getfield.(patterns, :ϕ)    
+
+    #--fast----
+    @tullio I[p] := Iₛ(positions[p], θₜ, ϕₜ, k)
+    @tullio AF_array[p, i,j] := AF(positions[p], θ[i], ϕ[j], k)
+    @tullio result_θ[i, j] := pattern_θ[p](θ[i],ϕ[j]) * coeffi[p] * I[p] * AF_array[p,i,j]
+    @tullio result_ϕ[i, j] := pattern_ϕ[p](θ[i],ϕ[j]) * coeffi[p] * I[p] * AF_array[p,i,j]
+    #-------
+
+    #----memory save--
+    # pattern = [pattern_θ, pattern_ϕ]
+    # @tullio result[i, j,θϕ] := pattern[θϕ][p](θ[i],ϕ[j]) * coeffi[p]*Iₛ(positions[p], θₜ, ϕₜ, k) * AF(positions[p], θ[i], ϕ[j], k) 
+    # result_θ = @view result[:,:,1]
+    # result_ϕ = @view result[:,:,2]
+    #-----------------
     
     anten_pattern(
-        θ=linear_interpolation((θ, ϕ), result_θ .|>abs, extrapolation_bc = Flat()) ,
-        ϕ=linear_interpolation((θ, ϕ), result_ϕ .|>abs, extrapolation_bc = Flat()) 
+        θ=linear_interpolation((θ, ϕ), result_θ .|>abs) ,
+        ϕ=linear_interpolation((θ, ϕ), result_ϕ .|>abs) 
     )
 end
 

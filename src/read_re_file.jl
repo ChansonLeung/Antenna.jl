@@ -6,7 +6,7 @@ using Interpolations
 export 
     read_hfss_pattern
 
-function read_hfss_pattern(name = "test/dataset/rE_theta_phi_dipole.csv", mode=:polar)
+function read_hfss_pattern(name = "test/dataset/rE_theta_phi_dipole.csv", mode=:polar, shape=(361,181))
 
     data_csv = CSV.read(name, DataFrame)
 
@@ -21,7 +21,7 @@ function read_hfss_pattern(name = "test/dataset/rE_theta_phi_dipole.csv", mode=:
         rE_theta_re,
         rE_theta_im) = getindex.([data_csv], !,["Phi[deg]","Theta[deg]","re(rEPhi)[mV]","im(rEPhi)[mV]","re(rETheta)[mV]","im(rETheta)[mV]"]) .|> 
                     x->Vector(Float64.(x)) |>
-                    x->reshape(x,361,181)
+                    x->reshape(x,shape...)
 
 
         rE_phi = rE_phi_re + rE_phi_im * 1im |>
@@ -31,14 +31,14 @@ function read_hfss_pattern(name = "test/dataset/rE_theta_phi_dipole.csv", mode=:
                 x -> permutedims(x, [2, 1])/1000
 
 
-        theta = collect(0.0:180.0) .|> deg2rad 
-        phi = collect(-180.0:180.0) .|> deg2rad 
+        theta = LinRange(0,pi, 181) 
+        phi = LinRange(-pi, pi, 361) 
 
 
 
         return anten_pattern(
-            θ=linear_interpolation((theta, phi), rE_theta, extrapolation_bc=Flat()),
-            ϕ=LinearInterpolation((theta, phi), rE_phi, extrapolation_bc=Flat())
+            θ=linear_interpolation((theta, phi), rE_theta),
+            ϕ=linear_interpolation((theta, phi), rE_phi)
         )
     else mode == :xyz
         #   1           2               3               4               5               6               7               8

@@ -35,7 +35,7 @@ pattern_dipole = anten_pattern(
     ϕ=(θ, ϕ) -> 0
 )
 
-Base.@kwdef mutable struct anten_point
+Base.@kwdef mutable struct anten_point 
     #point
     p::Vector{Float64}
     pattern::anten_pattern
@@ -43,6 +43,12 @@ Base.@kwdef mutable struct anten_point
     #XXX maybe slow down the performance
     local_coord = Matrix(1.0I, 3, 3)
 end
+
+# # make it like a Vector{Float64}
+# Base.getindex(x::anten_point, i::Int64) = x.p[i]
+# Base.setindex!(x::anten_point, v::AbstractFloat, i) = x.p[i] = v
+# Base.getindex(x::anten_point, I::Vararg{Int, N}) = Throw("cannot indexing over 1-d")
+# Base.setindex!(x::anten_point, v::AbstractFloat, I::Vararg{Int, N}) = Throw("cannot indexing over 1-d")
 
 function set_point_loc_coord!(point::anten_point, coord::Matrix{Float64})
     point.local_coord = coord
@@ -88,8 +94,8 @@ end
 
 
 c = 299792458
-θ_default::Vector{Float64}, ϕ_default::Vector{Float64} = (LinRange(0, 180, 180 +1), LinRange(-180, 180, 360+1)) .|> 
-                                x -> deg2rad.(x)
+# use Linrage instead of collect data can make interpolation.jl faster, collect it will make Interpolations.jl use non-uniform gird
+θ_default::Vector{Float64}, ϕ_default::Vector{Float64} = (LinRange(0, pi, 91 +1), LinRange(-pi, pi, 181+1))
 # const θ_default, ϕ_default = (LinRange(0, 180, 360 +1), [-180,  0, ]) .|> x -> deg2rad.(x)
 θ_grid::Matrix{Float64}, ϕ_grid::Matrix{Float64} = ([θ for θ in θ_default, ϕ in ϕ_default],
     [ϕ for θ in θ_default, ϕ in ϕ_default])
