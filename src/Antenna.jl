@@ -25,8 +25,6 @@ export
     anten_read,
     rotate_vec_in_sph,
     rotate_vec_in_sph!,
-    rotate_pattern,
-    rotate_pattern!,
     directivity,
     radiation_intensity,
     radiated_power,
@@ -36,7 +34,9 @@ export
     vec_θ,
     vec_θ_static,
     vec_ϕ,
-    vec_ϕ_static
+    vec_ϕ_static,
+    #degbug
+    rotate_pattern_tullion
 
 # array function
 # array factor
@@ -73,127 +73,66 @@ vec_θ_static(θ, ϕ) = @SArray [cos(θ)cos(ϕ), cos(θ)sin(ϕ), -sin(θ)]
 vec_ϕ(θ, ϕ) = [-sin(ϕ), cos(ϕ), 0.0]
 vec_ϕ_static(θ, ϕ) = @SArray [-sin(ϕ), cos(ϕ), 0.0]
 
-
-function rotate_pattern(pattern::anten_pattern, coord::Matrix{Float64})
-
-    
-    inverse_rotate_grid = rotate_vec_in_sph.(θ_grid, ϕ_grid, [coord'])
-    inv_rot_θ = map(x->x[1], inverse_rotate_grid)
-    inv_rot_ϕ = map(x->x[2], inverse_rotate_grid)
-
-    Gθ_grid::Matrix{Vector{ComplexF64}} = [
-        begin
-            (coord*vec_θ(θ, ϕ)) * pattern.θ(θ, ϕ)
-        end
-        for (θ, ϕ) = zip(inv_rot_θ, inv_rot_ϕ)
-    ]
-
-    Gϕ_grid::Matrix{Vector{ComplexF64}} = [
-        begin
-            (coord*vec_ϕ(θ, ϕ)) * pattern.ϕ(θ, ϕ)
-        end
-        for (θ, ϕ) = zip(inv_rot_θ, inv_rot_ϕ)
-    ]
-
-    vec_θ₁_map_grid::Matrix{Vector{Float64}} = [vec_θ(θ, ϕ) for (θ, ϕ) = zip(θ_grid, ϕ_grid)]
-    vec_ϕ₁_map_grid::Matrix{Vector{Float64}} = [vec_ϕ(θ, ϕ) for (θ, ϕ) = zip(θ_grid, ϕ_grid)]
-
-    Gθ = (dot.(Gθ_grid, vec_θ₁_map_grid)) .+
-         (dot.(Gϕ_grid, vec_θ₁_map_grid))
-    Gϕ = (dot.(Gϕ_grid, vec_ϕ₁_map_grid)) .+
-         (dot.(Gθ_grid, vec_ϕ₁_map_grid))
-
-    result = anten_pattern(
-        θ=linear_interpolation((θ_default, ϕ_default), Gθ, extrapolation_bc = Flat()),
-        ϕ=linear_interpolation((θ_default, ϕ_default), Gϕ, extrapolation_bc = Flat())
-    )
+function cart2sph_static(x, y, z)
+    # XXX r are not calcuated, may cause problem
+    r = sqrt(x^2 + y^2 + z^2)
+    θ = acos(z / r)
+    ϕ = atan(y, x)
+    @SVector[θ,ϕ,r]
 end
-function rotate_pattern!(pattern::anten_pattern, coord::Matrix{Float64})
-    # convert 3xMxN matrix to vector{eltpe, (M*N)}
-    point_mode(grid) = reshape(grid, 3,:)|>eachcol
-    vec2grid(vec) = reshape(vec, size(ϕ_grid)...)
 
-
-    inv_rot_grid = hcat(vec(θ_grid), vec(ϕ_grid), ones(length(ϕ_grid)))
-# rotate grid
-    for row in eachrow(inv_rot_grid)
-        rotate_vec_in_sph!(row, coord')
-    end
-
-    inv_rot_θ = @view inv_rot_grid[:,1]
-    inv_rot_ϕ = @view inv_rot_grid[:,2]
-    inv_rot_θ = reshape(inv_rot_θ, size(θ_grid))
-    inv_rot_ϕ = reshape(inv_rot_ϕ, size(ϕ_grid))
-# ------
-    Gainθ_grid = pattern.θ.(inv_rot_θ,inv_rot_ϕ)
-    vec_Gainθ_grid = zeros(3,size(inv_rot_θ)...)
-    for (point,θ, ϕ) in zip(point_mode(vec_Gainθ_grid), vec(inv_rot_θ), vec(inv_rot_ϕ))
-        point .= vec_θ_static(θ,ϕ)
-        mul!(point, coord, @SArray[point[1], point[2], point[3]])
-    end
-    Gainθ_grid = vec_Gainθ_grid .* reshape(Gainθ_grid,1,size(Gainθ_grid)... )
-
-# ------
-    Gainϕ_grid = pattern.ϕ.(inv_rot_θ,inv_rot_ϕ)
-    #preallocate memory
-    vec_Gainϕ_grid = zeros(3,size(inv_rot_ϕ)...)
-    for (point,θ, ϕ) in zip(point_mode(vec_Gainϕ_grid), vec(inv_rot_θ), vec(inv_rot_ϕ))
-        point .= vec_ϕ_static(θ,ϕ)
-        mul!(point, coord, @SArray[point[1], point[2], point[3]])
-    end
-    Gainϕ_grid = vec_Gainϕ_grid  .*reshape(Gainϕ_grid,1,size(Gainϕ_grid)...)
-
-    #preallocate memory
-    vec_θ₁_map_grid = zeros(3,size(θ_grid)...)
-    vec_ϕ₁_map_grid = zeros(3,size(θ_grid)...)
-    for (point_θ, point_ϕ, θ, ϕ) in zip(point_mode(vec_θ₁_map_grid), point_mode(vec_ϕ₁_map_grid),θ_grid, ϕ_grid)
-        point_θ .= vec_θ_static(θ,ϕ)
-        point_ϕ .= vec_ϕ_static(θ,ϕ)
-    end
-
-    prealloc_to_grid = vec2grid ∘ collect ∘ point_mode
-    Gθ = (dot.(Gainθ_grid |>prealloc_to_grid, vec_θ₁_map_grid|>prealloc_to_grid)) .+
-         (dot.(Gainϕ_grid |>prealloc_to_grid, vec_θ₁_map_grid|>prealloc_to_grid))
-    Gϕ = (dot.(Gainϕ_grid |>prealloc_to_grid, vec_ϕ₁_map_grid|>prealloc_to_grid)) .+
-         (dot.(Gainθ_grid |>prealloc_to_grid, vec_ϕ₁_map_grid|>prealloc_to_grid))
-
-    result = anten_pattern(
-        θ=linear_interpolation((θ_default, ϕ_default), Gθ, extrapolation_bc = Flat()),
-        ϕ=linear_interpolation((θ_default, ϕ_default), Gϕ, extrapolation_bc = Flat())
-    )
+function sph2cart_static(θ, ϕ, r)
+    @SArray [r * sin(θ)cos(ϕ),
+            r * sin(θ)sin(ϕ),
+            r * cos(θ)]
 end
+
+function rotate_pattern_tullion(pattern, coord)
+    mat = SMatrix{3,3}(coord)
+    patternθ = pattern.θ
+    patternϕ = pattern.ϕ
+    θ = θ_default
+    ϕ = ϕ_default
+    # close threads is needed, otherwise lead to segmentation fault(may due to this unformally supported sytle for @tullio)
+    @tullio threads=false inverse_rotate_grid[i,j] := begin
+        # rotate grid
+        sinθ,sinϕ,cosθ,cosϕ =sin(θ[i]),sin(ϕ[j]), cos(θ[i]), cos(ϕ[j])
+        x,y,z = SVector{3}(mat' * @SVector[sinθ*cosϕ, sinθ*sinϕ, cosθ])
+        θ_rot, ϕ_rot, r_rot =  cart2sph_static(x,y,z)
+        # get pattern vector value in rotate grid
+        sinθ_rot, sinϕ_rot, cosθ_rot, cosϕ_rot = sin(θ_rot), sin(ϕ_rot), cos(θ_rot), cos(ϕ_rot)
+        val_vec_θ_rot =  SVector{3}(mat * patternθ(θ_rot, ϕ_rot)*@SVector[cosθ_rot*cosϕ_rot, cosθ_rot*sinϕ_rot, -sinθ_rot] )
+        val_vec_ϕ_rot =  SVector{3}(mat * patternϕ(θ_rot, ϕ_rot)*@SVector[-sin(ϕ_rot), cos(ϕ_rot), 0.0] )
+        # project vector to global grid
+        vec_θ_global = @SVector[cosθ*cosϕ, cosθ*sinϕ, -sinθ] 
+        vec_ϕ_global = @SVector[-sin(ϕ[j]), cos(ϕ[j]), 0.0] 
+        @SVector[dot(val_vec_θ_rot, vec_θ_global) + dot(val_vec_ϕ_rot, vec_θ_global),
+        dot(val_vec_ϕ_rot, vec_ϕ_global) + dot(val_vec_θ_rot, vec_ϕ_global)]
+    end 
+    reinterpret(reshape, ComplexF64, inverse_rotate_grid)
+end
+
 
 # calculate the global pattern
 # para∑ can be write like this
 # para∑(Pi(point:p, point:pattern.θ , θ, ϕ, θₜ, ϕₜ, k), (point, θ,ϕ, θₜ, ϕₜ,k))
 function cal_pattern(point::Vector{anten_point},  θₜ::Float64, ϕₜ::Float64; k::Float64=k , θ=θ_default, ϕ=ϕ_default, spin=false)
     spin && @floop for p in point
-        p.pattern = rotate_pattern!(p.pattern, p.local_coord)
+        p.pattern_grid = rotate_pattern_tullion(p.pattern, p.local_coord)
     end
     
     positions = getfield.(point, :p)       
     coeffi    = getfield.(point, :coeffi)    
-    patterns  = getfield.(point, :pattern)
-    pattern_θ = getfield.(patterns, :θ)    
-    pattern_ϕ = getfield.(patterns, :ϕ)    
+    pattern  = getfield.(point, :pattern_grid)
 
-    #--fast----
     @tullio I[p] := Iₛ(positions[p], θₜ, ϕₜ, k)
-    @tullio AF_array[p, i,j] := AF(positions[p], θ[i], ϕ[j], k)
-    @tullio result_θ[i, j] := pattern_θ[p](θ[i],ϕ[j]) * coeffi[p] * I[p] * AF_array[p,i,j]
-    @tullio result_ϕ[i, j] := pattern_ϕ[p](θ[i],ϕ[j]) * coeffi[p] * I[p] * AF_array[p,i,j]
-    #-------
+    @tullio result[i, j] := coeffi[p]*I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i,j]))
+    result = reinterpret(reshape, ComplexF64, result)
+    map!(x->abs(x), result,result)
 
-    #----memory save--
-    # pattern = [pattern_θ, pattern_ϕ]
-    # @tullio result[i, j,θϕ] := pattern[θϕ][p](θ[i],ϕ[j]) * coeffi[p]*Iₛ(positions[p], θₜ, ϕₜ, k) * AF(positions[p], θ[i], ϕ[j], k) 
-    # result_θ = @view result[:,:,1]
-    # result_ϕ = @view result[:,:,2]
-    #-----------------
-    
     anten_pattern(
-        θ=linear_interpolation((θ, ϕ), result_θ .|>abs) ,
-        ϕ=linear_interpolation((θ, ϕ), result_ϕ .|>abs) 
+        θ=linear_interpolation((θ, ϕ), @view result[1,:,:]) ,
+        ϕ=linear_interpolation((θ, ϕ), @view result[2,:,:]) 
     )
 end
 
