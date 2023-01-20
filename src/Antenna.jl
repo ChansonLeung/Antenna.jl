@@ -87,14 +87,15 @@ function sph2cart_static(θ, ϕ, r)
             r * cos(θ)]
 end
 
-function rotate_pattern_tullion(pattern, coord)
+function rotate_pattern_tullion(res, pattern, coord, interp_exported = true)
+    res = reinterpret(reshape, SVector{2, ComplexF64}, res)
     mat = SMatrix{3,3}(coord)
     patternθ = pattern.θ
     patternϕ = pattern.ϕ
     θ = θ_default
     ϕ = ϕ_default
     # close threads is needed, otherwise lead to segmentation fault(may due to this unformally supported sytle for @tullio)
-    @tullio threads=false inverse_rotate_grid[i,j] := begin
+    @tullio threads=false res[i,j] = begin
         # rotate grid
         sinθ,sinϕ,cosθ,cosϕ =sin(θ[i]),sin(ϕ[j]), cos(θ[i]), cos(ϕ[j])
         x,y,z = SVector{3}(mat' * @SVector[sinθ*cosϕ, sinθ*sinϕ, cosθ])
@@ -109,7 +110,13 @@ function rotate_pattern_tullion(pattern, coord)
         @SVector[dot(val_vec_θ_rot, vec_θ_global) + dot(val_vec_ϕ_rot, vec_θ_global),
         dot(val_vec_ϕ_rot, vec_ϕ_global) + dot(val_vec_θ_rot, vec_ϕ_global)]
     end 
-    reinterpret(reshape, ComplexF64, inverse_rotate_grid)
+    if interp_exported
+        res = reinterpret(reshape, ComplexF64, res)
+        anten_pattern(
+            θ=linear_interpolation((θ, ϕ), @view res[1,:,:]) ,
+            ϕ=linear_interpolation((θ, ϕ), @view res[2,:,:]) 
+        )
+    end
 end
 
 
@@ -118,7 +125,8 @@ end
 # para∑(Pi(point:p, point:pattern.θ , θ, ϕ, θₜ, ϕₜ, k), (point, θ,ϕ, θₜ, ϕₜ,k))
 function cal_pattern(point::Vector{anten_point},  θₜ::Float64, ϕₜ::Float64; k::Float64=k , θ=θ_default, ϕ=ϕ_default, spin=false)
     spin && @floop for p in point
-        p.pattern_grid = rotate_pattern_tullion(p.pattern, p.local_coord)
+        # p.pattern_grid = rotate_pattern_tullion(p.pattern_grid, p.pattern, p.local_coord)
+        rotate_pattern_tullion(p.pattern_grid, p.pattern, p.local_coord)
     end
     
     positions = getfield.(point, :p)       
@@ -128,8 +136,6 @@ function cal_pattern(point::Vector{anten_point},  θₜ::Float64, ϕₜ::Float64
     @tullio I[p] := Iₛ(positions[p], θₜ, ϕₜ, k)
     @tullio result[i, j] := coeffi[p]*I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i,j]))
     result = reinterpret(reshape, ComplexF64, result)
-    map!(x->abs(x), result,result)
-
     anten_pattern(
         θ=linear_interpolation((θ, ϕ), @view result[1,:,:]) ,
         ϕ=linear_interpolation((θ, ϕ), @view result[2,:,:]) 

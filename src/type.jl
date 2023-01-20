@@ -38,7 +38,7 @@ pattern_dipole = anten_pattern(
 Base.@kwdef mutable struct anten_point 
     #point
     p::Vector{Float64}
-    pattern_grid = zeros(2, size(θ_grid)...)
+    pattern_grid = zeros(ComplexF64,2, size(θ_grid)...)
     pattern::anten_pattern # for linear interpolation
     coeffi::ComplexF64  = 1
     #XXX maybe slow down the performance
