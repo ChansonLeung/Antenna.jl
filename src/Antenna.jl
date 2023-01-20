@@ -64,7 +64,7 @@ end
 function rotate_vec_in_sph!(point, M)
     sph2cart!(point, point[1], point[2], 1)
     mul!(point, M, @SArray [point[1], point[2], point[3]])
-    cart2sph!(point, point[1],point[2], point[3])
+    cart2sph!(point, point[1], point[2], point[3])
 end
 
 vec_θ(θ, ϕ) = [cos(θ)cos(ϕ), cos(θ)sin(ϕ), -sin(θ)]
@@ -78,43 +78,43 @@ function cart2sph_static(x, y, z)
     r = sqrt(x^2 + y^2 + z^2)
     θ = acos(z / r)
     ϕ = atan(y, x)
-    @SVector[θ,ϕ,r]
+    @SVector[θ, ϕ, r]
 end
 
 function sph2cart_static(θ, ϕ, r)
     @SArray [r * sin(θ)cos(ϕ),
-            r * sin(θ)sin(ϕ),
-            r * cos(θ)]
+        r * sin(θ)sin(ϕ),
+        r * cos(θ)]
 end
 
-function rotate_pattern_tullion(res, pattern, coord, interp_exported = true)
-    res = reinterpret(reshape, SVector{2, ComplexF64}, res)
+function rotate_pattern_tullion(res, pattern, coord, interp_exported=true)
+    res = reinterpret(reshape, SVector{2,ComplexF64}, res)
     mat = SMatrix{3,3}(coord)
     patternθ = pattern.θ
     patternϕ = pattern.ϕ
     θ = θ_default
     ϕ = ϕ_default
     # close threads is needed, otherwise lead to segmentation fault(may due to this unformally supported sytle for @tullio)
-    @tullio threads=false res[i,j] = begin
+    @tullio threads = false res[i, j] = begin
         # rotate grid
-        sinθ,sinϕ,cosθ,cosϕ =sin(θ[i]),sin(ϕ[j]), cos(θ[i]), cos(ϕ[j])
-        x,y,z = SVector{3}(mat' * @SVector[sinθ*cosϕ, sinθ*sinϕ, cosθ])
-        θ_rot, ϕ_rot, r_rot =  cart2sph_static(x,y,z)
+        sinθ, sinϕ, cosθ, cosϕ = sin(θ[i]), sin(ϕ[j]), cos(θ[i]), cos(ϕ[j])
+        x, y, z = SVector{3}(mat' * @SVector[sinθ * cosϕ, sinθ * sinϕ, cosθ])
+        θ_rot, ϕ_rot, r_rot = cart2sph_static(x, y, z)
         # get pattern vector value in rotate grid
         sinθ_rot, sinϕ_rot, cosθ_rot, cosϕ_rot = sin(θ_rot), sin(ϕ_rot), cos(θ_rot), cos(ϕ_rot)
-        val_vec_θ_rot =  SVector{3}(mat * patternθ(θ_rot, ϕ_rot)*@SVector[cosθ_rot*cosϕ_rot, cosθ_rot*sinϕ_rot, -sinθ_rot] )
-        val_vec_ϕ_rot =  SVector{3}(mat * patternϕ(θ_rot, ϕ_rot)*@SVector[-sin(ϕ_rot), cos(ϕ_rot), 0.0] )
+        val_vec_θ_rot = SVector{3}(mat * patternθ(θ_rot, ϕ_rot) * @SVector[cosθ_rot * cosϕ_rot, cosθ_rot * sinϕ_rot, -sinθ_rot])
+        val_vec_ϕ_rot = SVector{3}(mat * patternϕ(θ_rot, ϕ_rot) * @SVector[-sin(ϕ_rot), cos(ϕ_rot), 0.0])
         # project vector to global grid
-        vec_θ_global = @SVector[cosθ*cosϕ, cosθ*sinϕ, -sinθ] 
-        vec_ϕ_global = @SVector[-sin(ϕ[j]), cos(ϕ[j]), 0.0] 
+        vec_θ_global = @SVector[cosθ * cosϕ, cosθ * sinϕ, -sinθ]
+        vec_ϕ_global = @SVector[-sin(ϕ[j]), cos(ϕ[j]), 0.0]
         @SVector[dot(val_vec_θ_rot, vec_θ_global) + dot(val_vec_ϕ_rot, vec_θ_global),
-        dot(val_vec_ϕ_rot, vec_ϕ_global) + dot(val_vec_θ_rot, vec_ϕ_global)]
-    end 
+            dot(val_vec_ϕ_rot, vec_ϕ_global) + dot(val_vec_θ_rot, vec_ϕ_global)]
+    end
     if interp_exported
         res = reinterpret(reshape, ComplexF64, res)
         anten_pattern(
-            θ=linear_interpolation((θ, ϕ), @view res[1,:,:]) ,
-            ϕ=linear_interpolation((θ, ϕ), @view res[2,:,:]) 
+            θ=linear_interpolation((θ, ϕ), @view res[1, :, :]),
+            ϕ=linear_interpolation((θ, ϕ), @view res[2, :, :])
         )
     end
 end
@@ -123,22 +123,22 @@ end
 # calculate the global pattern
 # para∑ can be write like this
 # para∑(Pi(point:p, point:pattern.θ , θ, ϕ, θₜ, ϕₜ, k), (point, θ,ϕ, θₜ, ϕₜ,k))
-function cal_pattern(point::Vector{anten_point},  θₜ::Float64, ϕₜ::Float64; k::Float64=k , θ=θ_default, ϕ=ϕ_default, spin=false)
+function cal_pattern(point::Vector{anten_point}, θₜ::Float64, ϕₜ::Float64; k::Float64=k, θ=θ_default, ϕ=ϕ_default, spin=false)
     spin && @floop for p in point
         # p.pattern_grid = rotate_pattern_tullion(p.pattern_grid, p.pattern, p.local_coord)
         rotate_pattern_tullion(p.pattern_grid, p.pattern, p.local_coord)
     end
-    
-    positions = getfield.(point, :p)       
-    coeffi    = getfield.(point, :coeffi)    
-    pattern  = getfield.(point, :pattern_grid)
+
+    positions = getfield.(point, :p)
+    coeffi = getfield.(point, :coeffi)
+    pattern = getfield.(point, :pattern_grid)
 
     @tullio I[p] := Iₛ(positions[p], θₜ, ϕₜ, k)
-    @tullio result[i, j] := coeffi[p]*I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i,j]))
+    @tullio result[i, j] := coeffi[p] * I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i, j]))
     result = reinterpret(reshape, ComplexF64, result)
     anten_pattern(
-        θ=linear_interpolation((θ, ϕ), @view result[1,:,:]) ,
-        ϕ=linear_interpolation((θ, ϕ), @view result[2,:,:]) 
+        θ=linear_interpolation((θ, ϕ), @view result[1, :, :]),
+        ϕ=linear_interpolation((θ, ϕ), @view result[2, :, :])
     )
 end
 
@@ -163,11 +163,11 @@ gain = (pattern, inciden_power) -> function (θ, ϕ)
 end
 
 
-function SLL_maxgain(pattern::anten_pattern;θ=0.0, ϕ=0.0)
+function SLL_maxgain(pattern::anten_pattern; θ=0.0, ϕ=0.0)
     d = directivity(pattern)
-    curve = [d((mod_angle_deg(θ,ϕ) .|>deg2rad)...) for θ in -100:100, ϕ in ϕ]
-    val = maxima(curve) |> sort! 
-    val[end]/val[end-1], val[end]
+    curve = [d((mod_angle_deg(θ, ϕ) .|> deg2rad)...) for θ in -100:100, ϕ in ϕ]
+    val = maxima(curve) |> sort!
+    val[end] / val[end-1], val[end]
 end
 
 end
