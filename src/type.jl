@@ -69,7 +69,18 @@ end
 
 
 function point_rectangle(; Nx, Ny, dx, dy, pattern)
-    vec_2_struct_point = (p, coeffi) -> anten_point(p=p, pattern=pattern, coeffi=coeffi)
+    vec_2_struct_point = (p, coeffi) -> anten_point(
+        p=p, 
+        pattern=pattern, 
+        pattern_grid = begin 
+            res = zeros(ComplexF64,2,size(θ_grid)...)
+            res[1,:,:] .= pattern.θ.(θ_grid,ϕ_grid)
+            res[2,:,:] .= pattern.ϕ.(θ_grid, ϕ_grid)
+            res
+        end,
+        coeffi=coeffi, 
+    )
+
     point = [[dx * i, dy * j, 0] for i in 1:Nx for j in 1:Ny]
 
     # R0 = 10
@@ -81,7 +92,11 @@ function point_rectangle(; Nx, Ny, dx, dy, pattern)
     #           for x in (1:Nx) .- (Nx + 1) / 2
     #           for y in (1:Ny) .- (Ny + 1) / 2]
     # vec_2_struct_point.(point, coeffi)
-    vec_2_struct_point.(point, 1)   
+    points = Vector{anten_point}()
+    for i in point
+        push!(points, vec_2_struct_point(i, 1))
+    end
+    points
 end
 
 

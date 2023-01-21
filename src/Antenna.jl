@@ -87,7 +87,7 @@ function sph2cart_static(θ, ϕ, r)
         r * cos(θ)]
 end
 
-function rotate_pattern_tullion(res, pattern, coord, interp_exported=true)
+function rotate_pattern_tullion(res, pattern, coord; interp_exported=true)
     res = reinterpret(reshape, SVector{2,ComplexF64}, res)
     mat = SMatrix{3,3}(coord)
     patternθ = pattern.θ
@@ -113,9 +113,13 @@ function rotate_pattern_tullion(res, pattern, coord, interp_exported=true)
     if interp_exported
         res = reinterpret(reshape, ComplexF64, res)
         anten_pattern(
-            θ=linear_interpolation((θ, ϕ), @view res[1, :, :]),
-            ϕ=linear_interpolation((θ, ϕ), @view res[2, :, :])
+            θ=interpolate!((θ, ϕ), (@view res[1, :, :]), Gridded(Linear())),
+            ϕ=interpolate!((θ, ϕ), (@view res[2, :, :]), Gridded(Linear()))
         )
+        # anten_pattern(
+        #     θ=linear_interpolation((θ, ϕ), @view res[1, :, :]),
+        #     ϕ=linear_interpolation((θ, ϕ), @view res[2, :, :])
+        # )
     end
 end
 
@@ -136,9 +140,10 @@ function cal_pattern(point::Vector{anten_point}, θₜ::Float64, ϕₜ::Float64;
     @tullio I[p] := Iₛ(positions[p], θₜ, ϕₜ, k)
     @tullio result[i, j] := coeffi[p] * I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i, j]))
     result = reinterpret(reshape, ComplexF64, result)
+
     anten_pattern(
-        θ=linear_interpolation((θ, ϕ), @view result[1, :, :]),
-        ϕ=linear_interpolation((θ, ϕ), @view result[2, :, :])
+        θ=interpolate!((θ, ϕ), (@view result[1, :, :]), Gridded(Linear())),
+        ϕ=interpolate!((θ, ϕ), (@view result[2, :, :]), Gridded(Linear()))
     )
 end
 
