@@ -35,7 +35,7 @@ pattern_dipole = anten_pattern(
     ϕ=(θ, ϕ) -> 0
 )
 
-Base.@kwdef mutable struct anten_point 
+mutable struct anten_point 
     #point
     p::Vector{Float64}
     pattern::anten_pattern # for linear interpolation
@@ -43,15 +43,16 @@ Base.@kwdef mutable struct anten_point
     #XXX maybe slow down the performance
     local_coord
     pattern_grid
+end
 
-    anten_point(;p, pattern=pattern_identity, coeffi=1, local_coord=Matrix(1.0I,3,3)) = begin
+anten_point(;p=[0,0,0], pattern = pattern_identity, local_coord = Matrix(1.0I,3,3), coeffi=1, pattern_grid=nothing) = begin
+    if pattern_grid == nothing
         pattern_grid = zeros(ComplexF64,2,size(θ_grid)...)
         pattern_grid[1,:,:] .= pattern.θ.(θ_grid,ϕ_grid)
         pattern_grid[2,:,:] .= pattern.ϕ.(θ_grid, ϕ_grid)
-        new(p, pattern, coeffi, local_coord, pattern_grid)
     end
+    anten_point(p, pattern, coeffi, local_coord, pattern_grid)
 end
-
 
 # # make it like a Vector{Float64}
 # Base.getindex(x::anten_point, i::Int64) = x.p[i]
@@ -77,19 +78,16 @@ end
 
 
 function point_rectangle(; Nx, Ny, dx, dy, pattern)
-    vec_2_struct_point = (p, coeffi) -> anten_point(
+    vec_2_struct_point = (p) -> anten_point(
         p=p, 
         pattern=pattern, 
-        pattern_grid = begin 
-            res = zeros(ComplexF64,2,size(θ_grid)...)
-            res[1,:,:] .= pattern.θ.(θ_grid,ϕ_grid)
-            res[2,:,:] .= pattern.ϕ.(θ_grid, ϕ_grid)
-            res
-        end,
-        coeffi=coeffi, 
     )
-
     point = [[dx * i, dy * j, 0] for i in 1:Nx for j in 1:Ny]
+    points = Vector{anten_point}()
+    for i in point
+        push!(points, vec_2_struct_point(i))
+    end
+    points
 
     # R0 = 10
     # n = 5
@@ -100,11 +98,6 @@ function point_rectangle(; Nx, Ny, dx, dy, pattern)
     #           for x in (1:Nx) .- (Nx + 1) / 2
     #           for y in (1:Ny) .- (Ny + 1) / 2]
     # vec_2_struct_point.(point, coeffi)
-    points = Vector{anten_point}()
-    for i in point
-        push!(points, vec_2_struct_point(i, 1))
-    end
-    points
 end
 
 

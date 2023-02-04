@@ -3,14 +3,14 @@ using LinearAlgebra
 using Antenna
 using Interpolations
 using Plots
-using Lazy
+using Lazy:@>
 
 
 @recipe f(::Type{anten_point}, point::anten_point) = point.pattern
 
 @recipe f(::Type{Vector{anten_point}}, points::Vector{anten_point}) = getfield.(points, :p)
 
-@recipe function f(pattern::anten_pattern)
+@recipe function f(pattern::anten_pattern, component=:all)
     xlabel --> "u"
     ylabel --> "v"
 
@@ -23,19 +23,19 @@ using Lazy
 
     θ = @. acos(w/sqrt(u^2+v^2+w^2))
     ϕ = @. atan(v,u)
-    r = @> directivity(pattern).(θ, ϕ)  .|> x->10log10(x)
+    r = @> directivity(pattern, component).(θ, ϕ)  .|> x->10log10(x)
 
     @. r[u^2+v^2>1] = NaN
 
-    clims --> (-20, maximum(r))
+    clims --> (-40, maximum(r))
     @series begin
         seriestype := :heatmap 
         (u[:,1], v[1,:], r)
     end
-    @series begin
-        seriestype := :contour 
-        (u[:,1],v[1,:],r)
-    end
+    # @series begin
+    #     seriestype := :contour 
+    #     (u[:,1],v[1,:],r)
+    # end
 
 end
 

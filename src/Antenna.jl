@@ -102,15 +102,22 @@ function rotate_pattern_tullion(res, pattern, coord; interp_exported=true)
         sinθ, sinϕ, cosθ, cosϕ = sin(θ[i]), sin(ϕ[j]), cos(θ[i]), cos(ϕ[j])
         x, y, z = SVector{3}(mat' * @SVector[sinθ * cosϕ, sinθ * sinϕ, cosθ])
         θ_rot, ϕ_rot, r_rot = cart2sph_static(x, y, z)
+        if θ_rot ≈ 0
+        # θ = 45, ϕ = 90
+        # θ_rot = 0, ϕ = ? 
+            ϕ_rot =ϕ[j] 
+        end
+
         # get pattern vector value in rotate grid
         sinθ_rot, sinϕ_rot, cosθ_rot, cosϕ_rot = sin(θ_rot), sin(ϕ_rot), cos(θ_rot), cos(ϕ_rot)
         val_vec_θ_rot = SVector{3}(mat * patternθ(θ_rot, ϕ_rot) * @SVector[cosθ_rot * cosϕ_rot, cosθ_rot * sinϕ_rot, -sinθ_rot])
-        val_vec_ϕ_rot = SVector{3}(mat * patternϕ(θ_rot, ϕ_rot) * @SVector[-sin(ϕ_rot), cos(ϕ_rot), 0.0])
+        val_vec_ϕ_rot = SVector{3}(mat * patternϕ(θ_rot, ϕ_rot) * @SVector[-sinϕ_rot, cosϕ_rot, 0.0])
         # project vector to global grid
         vec_θ_global = @SVector[cosθ * cosϕ, cosθ * sinϕ, -sinθ]
         vec_ϕ_global = @SVector[-sin(ϕ[j]), cos(ϕ[j]), 0.0]
-        @SVector[dot(val_vec_θ_rot, vec_θ_global) + dot(val_vec_ϕ_rot, vec_θ_global),
-            dot(val_vec_ϕ_rot, vec_ϕ_global) + dot(val_vec_θ_rot, vec_ϕ_global)]
+
+        @SVector[dot(conj.(val_vec_θ_rot), vec_θ_global) + dot(conj.(val_vec_ϕ_rot), vec_θ_global),
+            dot(conj.(val_vec_ϕ_rot), vec_ϕ_global) + dot(conj.(val_vec_θ_rot), vec_ϕ_global)]
     end
     if interp_exported
         res = reinterpret(reshape, ComplexF64, res)
@@ -210,6 +217,7 @@ function cal_pattern_cuda_kernel(
     return nothing
 end
 
+
 function cal_pattern_cuda(point::Vector{anten_point}, k::Float64=k, θ=θ_default, ϕ=ϕ_default, spin=false)
     positions = reduce(hcat,getfield.(point,:p))
     coeffi = reduce(vcat,getfield.(point,:coeffi))
@@ -227,27 +235,38 @@ function cal_pattern_cuda(point::Vector{anten_point}, k::Float64=k, θ=θ_defaul
         pattern_out_cu,
         k
 );
-    Array(pattern_out_cu)
+    result = Array(pattern_out_cu)
+
+    anten_pattern(
+        θ=interpolate!((θ, ϕ), (@view result[1, :, :]), Gridded(Linear())),
+        ϕ=interpolate!((θ, ϕ), (@view result[2, :, :]), Gridded(Linear()))
+    )
 end
 
 # function below may has performance problem that need to be check because of the usage of lambda inside the comprehension 
 # unit of radiation intensity is w/sr (watt/unit solid angle) refer to Antenna Theory 2-12a
-function radiation_intensity(pattern::anten_pattern)
-    (θ, ϕ) -> 1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2 + abs(pattern.ϕ(θ, ϕ))^2)
+function radiation_intensity(pattern::anten_pattern, component=:all)
+    if component == :all
+        (θ, ϕ) -> 1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2 + abs(pattern.ϕ(θ, ϕ))^2)
+    elseif component==:θ
+        (θ, ϕ) -> 1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2)
+    elseif component==:ϕ
+        (θ, ϕ) -> 1 / 2(120pi) * (abs(pattern.ϕ(θ, ϕ))^2)
+    end
 end
 # unit of radiated power is w (watt) refer to Antenna Theory 2-13
-@memoize function radiated_power(pattern::anten_pattern)
+@memoize function radiated_power(pattern::anten_pattern, component=:all)
     result = sum([sin(θ) * U * 2pi * pi * 1 / size(ϕ_default, 1)size(θ_default, 1)
-                  for (U, θ) in zip(radiation_intensity(pattern).(θ_grid, ϕ_grid), θ_grid)])
+                  for (U, θ) in zip(radiation_intensity(pattern, component).(θ_grid, ϕ_grid), θ_grid)])
 end
 
 # no unit refer to Antenna Theory 2-16
-@memoize function directivity(pattern::anten_pattern)
-    (θ, ϕ) -> 4pi * radiation_intensity(pattern)(θ, ϕ) / radiated_power(pattern)
+@memoize function directivity(pattern::anten_pattern, component=:all)
+    (θ, ϕ) -> 4pi * radiation_intensity(pattern, component)(θ, ϕ) / radiated_power(pattern)
 end
 # no unit refer to Antenna Theory 2-16
-gain = (pattern, inciden_power) -> function (θ, ϕ)
-    4pi * radiation_intensity(pattern)(θ, ϕ) / inciden_power
+gain = (pattern, inciden_power) -> function (θ, ϕ, component=:all)
+    4pi * radiation_intensity(pattern, component)(θ, ϕ) / inciden_power
 end
 
 
