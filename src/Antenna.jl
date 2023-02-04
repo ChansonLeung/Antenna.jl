@@ -14,6 +14,7 @@ using Peaks
 
 using LoopVectorization
 using Tullio
+using CUDA
 
 include("type.jl")
 include("utils.jl")
@@ -36,7 +37,8 @@ export
     vec_ϕ,
     vec_ϕ_static,
     #degbug
-    rotate_pattern_tullion
+    rotate_pattern_tullion,
+    cal_pattern_cuda
 
 # array function
 # array factor
@@ -145,6 +147,87 @@ function cal_pattern(point::Vector{anten_point}, θₜ::Float64, ϕₜ::Float64;
         θ=interpolate!((θ, ϕ), (@view result[1, :, :]), Gridded(Linear())),
         ϕ=interpolate!((θ, ϕ), (@view result[2, :, :]), Gridded(Linear()))
     )
+end
+
+
+function cal_pattern_cuda_kernel(
+    positions, 
+    coeffi, 
+    mat_rot, 
+    pattern_in_re, 
+    pattern_in_im, 
+    pattern_out, 
+    k,
+    θₜ=0, 
+    ϕₜ=0, 
+    θ_default=cu(LinRange(0, pi, 181)), 
+    ϕ_default=cu(LinRange(-pi, pi, 361)),
+)
+    idx_i = (blockIdx().x - 1) * blockDim().x + threadIdx().x
+    stride_i = gridDim().x * blockDim().x
+
+    for i in idx_i:stride_i:length(θ_default)*length(ϕ_default)
+        for j in 1:length(coeffi)
+            mat_rot_i = SMatrix{3,3}(mat_rot[j])
+            idx_θ = (i - 1) % length(θ_default) + 1
+            idx_ϕ = (i - 1) ÷ length(θ_default) + 1
+
+            # rotate grid
+            θ, ϕ = θ_default[idx_θ], ϕ_default[idx_ϕ]
+            sinθ, sinϕ, cosθ, cosϕ = sin(θ), sin(ϕ), cos(θ), cos(ϕ)
+            x, y, z = mat_rot_i' * @SVector[sinθ * cosϕ, sinθ * sinϕ, cosθ]
+            θ_rot, ϕ_rot, r_rot = cart2sph_static(x, y, z)
+
+            # get pattern vector value in rotate grid
+            sinθ_rot, sinϕ_rot, cosθ_rot, cosϕ_rot = sin(θ_rot), sin(ϕ_rot), cos(θ_rot), cos(ϕ_rot)
+                # FIXME need interpolation
+            tex_idx_θ = θ_rot * (length(θ_default)-1)/pi+1
+            tex_idx_ϕ = (ϕ_rot +pi) * (length(ϕ_default)-1)/2pi+1
+            Gθ_rot_local = pattern_in_re[1,tex_idx_θ, tex_idx_ϕ] + 1im*pattern_in_im[1,tex_idx_θ, tex_idx_ϕ]
+            Gϕ_rot_local = pattern_in_re[2,tex_idx_θ, tex_idx_ϕ] + 1im*pattern_in_im[2,tex_idx_θ, tex_idx_ϕ]
+
+            val_vec_θ_rot =  Gθ_rot_local* mat_rot_i * @SVector[cosθ_rot * cosϕ_rot, cosθ_rot * sinϕ_rot, -sinθ_rot]
+            val_vec_ϕ_rot =  Gϕ_rot_local* mat_rot_i * @SVector[-sinϕ_rot, cosϕ_rot, 0.0]
+
+            # project vector to global grid
+            vec_θ_global = @SVector[cosθ * cosϕ, cosθ * sinϕ, -sinθ]
+            vec_ϕ_global = @SVector[-sinϕ, cosϕ, 0.0]
+
+            G_θ = dot(val_vec_θ_rot, vec_θ_global) + dot(val_vec_ϕ_rot, vec_θ_global)
+            G_ϕ = dot(val_vec_ϕ_rot, vec_ϕ_global) + dot(val_vec_θ_rot, vec_ϕ_global)
+
+            sinθₜ, sinϕₜ, cosθₜ, cosϕₜ = sin(θₜ), sin(ϕₜ), cos(θₜ), cos(ϕₜ)
+            p = @SVector[positions[1, j], positions[2, j], positions[3, j]]
+            # # ---
+            # tmp = coeffi[j] * Iₛ(p, θₜ, ϕₜ, k) * AF(p, θ, ϕ, k)
+            tmp = coeffi[j] * exp(1.0im * k * (p[1] * sinθ*cosϕ + p[2] * sinθ*sinϕ + p[3] * cosθ))
+            # exp(1.0im * k * (p[1] * sinθₜ*cosϕₜ + p[2] * sinθₜ*sinϕₜ + p[3] * cosθₜ))
+
+            pattern_out[1, idx_θ, idx_ϕ] += tmp * G_θ
+            pattern_out[2, idx_θ, idx_ϕ] += tmp * G_ϕ
+        end
+    end
+    return nothing
+end
+
+function cal_pattern_cuda(point::Vector{anten_point}, k::Float64=k, θ=θ_default, ϕ=ϕ_default, spin=false)
+    positions = reduce(hcat,getfield.(point,:p))
+    coeffi = reduce(vcat,getfield.(point,:coeffi))
+    mat_rot = [SMatrix{3,3}(i.local_coord) for i in point]
+    pattern_in_re = CuTextureArray(cu(real.(point[1].pattern_grid))) |> x -> CuTexture(x; interpolation=CUDA.LinearInterpolation())
+    pattern_in_im = CuTextureArray(cu(imag.(point[1].pattern_grid))) |> x -> CuTexture(x; interpolation=CUDA.LinearInterpolation())
+    pattern_out_cu = zeros(ComplexF32, 2, size(θ_grid)...) |> cu
+
+    @cuda threads = 128 blocks=ceil(Int, length(θ_default)*length(ϕ_default)/128) cal_pattern_cuda_kernel(
+        cu(positions),
+        cu(coeffi),
+        cu(mat_rot),
+        pattern_in_re,
+        pattern_in_im,
+        pattern_out_cu,
+        k
+);
+    Array(pattern_out_cu)
 end
 
 # function below may has performance problem that need to be check because of the usage of lambda inside the comprehension 
