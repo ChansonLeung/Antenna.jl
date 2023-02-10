@@ -175,10 +175,10 @@ function plot_pattern(pattern::anten_pattern, component=:all; min = -20, θ = θ
     end
 
 end
-function plot_pattern_2D(pattern::anten_pattern; θ = rad2deg.([-reverse(θ_default);θ_default]), ϕ = 0, ret_trace=false)
+function plot_pattern_2D(pattern::anten_pattern, component=:all ; θ = rad2deg.([-reverse(θ_default);θ_default]), ϕ = 0, ret_trace=false)
     θ_ = [mod_angle_deg(θ,ϕ)[1] |>deg2rad for θ in θ]
     ϕ_ = [mod_angle_deg(θ,ϕ)[2] |>deg2rad for θ in θ]
-    r = directivity(pattern).(θ_,ϕ_) |> x->10log10.(x)
+    r = directivity(pattern, component).(θ_,ϕ_) |> x->10log10.(x)
     if ret_trace 
         PlotlyJS.scatter(x=θ,y=r, mode="lines", showlegend = false)
     else
