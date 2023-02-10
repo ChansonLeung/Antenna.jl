@@ -86,11 +86,11 @@ function plot_point(point::Vector{anten_point}; ret_trace = false)
     plot_point(vec_vec_point, ret_trace = ret_trace)
 end
 
-function plot_pattern(pattern::anten_pattern; min = -20, θ = θ_default, ϕ = ϕ_default, ret_trace=false)
+function plot_pattern(pattern::anten_pattern, component=:all; min = -20, θ = θ_default, ϕ = ϕ_default, ret_trace=false)
     θ_grid = [θ for θ in θ, ϕ in ϕ]
     ϕ_grid = [ϕ for θ in θ, ϕ in ϕ]
 
-    r = directivity(pattern).(θ_grid, ϕ_grid)
+    r = directivity(pattern, component).(θ_grid, ϕ_grid)
     r_log_raw = 10log10.(r)
     # get maximum U and the direction
     max_U = maximum(r_log_raw)
