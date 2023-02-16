@@ -44,6 +44,8 @@ mutable struct anten_point
     local_coord
     pattern_grid
 end
+Base.show(io::IO, array::anten_point) = print(io, "p: $(array.p), local_coord: $(array.local_coord)")
+
 
 anten_point(;p=[0,0,0], pattern = pattern_identity, local_coord = Matrix(1.0I,3,3), coeffi=1, pattern_grid=nothing) = begin
     if pattern_grid == nothing
