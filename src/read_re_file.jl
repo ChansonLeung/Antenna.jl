@@ -6,7 +6,7 @@ using Interpolations
 export 
     read_hfss_pattern
 
-function read_hfss_pattern(name = "test/dataset/rE_theta_phi_dipole.csv", mode=:polar, shape=(361,181))
+function read_hfss_pattern(name = "test/dataset/rE_theta_phi_dipole.csv", mode=:polar; shape=(181,361), rangeθ=(0,pi),rangeϕ=(-pi,pi))
 
     data_csv = CSV.read(name, DataFrame)
 
@@ -21,7 +21,7 @@ function read_hfss_pattern(name = "test/dataset/rE_theta_phi_dipole.csv", mode=:
         rE_theta_re,
         rE_theta_im) = getindex.([data_csv], !,["Phi[deg]","Theta[deg]","re(rEPhi)[mV]","im(rEPhi)[mV]","re(rETheta)[mV]","im(rETheta)[mV]"]) .|> 
                     x->Vector(Float64.(x)) |>
-                    x->reshape(x,shape...)
+                    x->reshape(x,shape[2],shape[1])
 
 
         rE_phi = rE_phi_re + rE_phi_im * 1im |>
@@ -31,10 +31,8 @@ function read_hfss_pattern(name = "test/dataset/rE_theta_phi_dipole.csv", mode=:
                 x -> permutedims(x, [2, 1])/1000
 
 
-        theta = LinRange(0,pi, 181) 
-        phi = LinRange(-pi, pi, 361) 
-
-
+        theta = LinRange(rangeθ..., shape[1]) 
+        phi = LinRange(rangeϕ..., shape[2]) 
 
         return anten_pattern(
             θ=linear_interpolation((theta, phi), rE_theta),
