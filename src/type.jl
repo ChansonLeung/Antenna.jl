@@ -13,6 +13,15 @@ Base.@kwdef mutable struct anten_pattern
     θ::Any
     ϕ::Any
 end
+Base.show(io::IO, pattern::anten_pattern) = begin
+    D_func = directivity(pattern)
+    D = D_func.(θ_grid, ϕ_grid)
+    max_D = maximum(D)
+    max_D_θ = θ_grid[D.==max_D][1] |>rad2deg
+    max_D_ϕ = ϕ_grid[D.==max_D][1] |>rad2deg
+    power = radiated_power(pattern)
+    print(io, "max power directivity: $(max_D |>x->round(x,digits=4)) = $(max_D |> x->10log10(x) |>x->round(x,digits=4))dB at θ=$(max_D_θ|>x->round(x,digits=4)), ϕ=$(max_D_ϕ|>x->round(x,digits=4)), radiated power=$(power|>x->round(x,digits=4))w")
+end
 
 # # XXX the linear Interpolations may access the extrapolate point because of the accuracy of float numer
 # @recipe ploting(p::anten_pattern; ϕ::Float64 = pi/2-0.00001) = begin
@@ -114,8 +123,7 @@ end
 
 c = 299792458
 # use Linrage instead of collect data can make interpolation.jl faster, collect it will make Interpolations.jl use non-uniform gird
-θ_default::Vector{Float64}, ϕ_default::Vector{Float64} = (LinRange(0, pi, 180 +1), LinRange(-pi, pi, 360+1))
-# const θ_default, ϕ_default = (LinRange(0, 180, 360 +1), [-180,  0, ]) .|> x -> deg2rad.(x)
+θ_default::LinRange{Float64, Int64}, ϕ_default::LinRange{Float64, Int64} = (LinRange(0, pi, 180 +1), LinRange(-pi, pi, 360+1))
 θ_grid::Matrix{Float64}, ϕ_grid::Matrix{Float64} = ([θ for θ in θ_default, ϕ in ϕ_default],
     [ϕ for θ in θ_default, ϕ in ϕ_default])
 

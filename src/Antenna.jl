@@ -89,7 +89,7 @@ function sph2cart_static(θ, ϕ, r)
         r * cos(θ)]
 end
 
-function rotate_pattern_tullion(res, pattern, coord; interp_exported=true)
+function rotate_pattern_tullion(res, pattern, coord; interp=true)
     res = reinterpret(reshape, SVector{2,ComplexF64}, res)
     mat = SMatrix{3,3}(coord)
     patternθ = pattern.θ
@@ -119,16 +119,12 @@ function rotate_pattern_tullion(res, pattern, coord; interp_exported=true)
         @SVector[dot(conj.(val_vec_θ_rot), vec_θ_global) + dot(conj.(val_vec_ϕ_rot), vec_θ_global),
             dot(conj.(val_vec_ϕ_rot), vec_ϕ_global) + dot(conj.(val_vec_θ_rot), vec_ϕ_global)]
     end
-    if interp_exported
+    if interp
         res = reinterpret(reshape, ComplexF64, res)
         anten_pattern(
             θ=interpolate!((θ, ϕ), (@view res[1, :, :]), Gridded(Linear())),
             ϕ=interpolate!((θ, ϕ), (@view res[2, :, :]), Gridded(Linear()))
         )
-        # anten_pattern(
-        #     θ=linear_interpolation((θ, ϕ), @view res[1, :, :]),
-        #     ϕ=linear_interpolation((θ, ϕ), @view res[2, :, :])
-        # )
     end
 end
 
@@ -136,25 +132,46 @@ end
 # calculate the global pattern
 # para∑ can be write like this
 # para∑(Pi(point:p, point:pattern.θ , θ, ϕ, θₜ, ϕₜ, k), (point, θ,ϕ, θₜ, ϕₜ,k))
-function cal_pattern(point::Vector{anten_point}, θₜ::Float64, ϕₜ::Float64; k::Float64=k, θ=θ_default, ϕ=ϕ_default, spin=false)
-    spin && @floop for p in point
-        # p.pattern_grid = rotate_pattern_tullion(p.pattern_grid, p.pattern, p.local_coord)
-        rotate_pattern_tullion(p.pattern_grid, p.pattern, p.local_coord)
-    end
+function cal_pattern(
+        point::Vector{anten_point},
+        θₜ,
+        ϕₜ; 
+        k::Float64=k,
+        θ=θ_default,
+        ϕ=ϕ_default,
+        spin=false,
+        I=nothing,
+        withAF=true,
+        optimal_directivity=false,
+        args...
+    )
+    θₜ = Float64(θₜ)
+    ϕₜ = Float64(ϕₜ)
+    D_direct = ones(length(point))
 
+    spin && @floop for (idx,p) in enumerate(point)
+       pattern_i = rotate_pattern_tullion(p.pattern_grid, p.pattern, p.local_coord, interp=true)
+       optimal_directivity &&  (D_direct[idx] = directivity(pattern_i)(θₜ, ϕₜ))
+    end
     positions = getfield.(point, :p)
-    coeffi = getfield.(point, :coeffi)
+    coeffi = getfield.(point, :coeffi) .* sqrt.(D_direct)
     pattern = getfield.(point, :pattern_grid)
 
-    @tullio I[p] := Iₛ(positions[p], θₜ, ϕₜ, k)
-    @tullio result[i, j] := coeffi[p] * I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i, j]))
+    I===nothing && @tullio I[p] := Iₛ(positions[p], θₜ, ϕₜ, k)
+    if withAF
+        @tullio result[i, j] := coeffi[p] * I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i, j]))
+    else
+        @tullio result[i, j] := coeffi[p] * I[p] * SVector{2}((@view pattern[p][:, i, j]))
+    end
     result = reinterpret(reshape, ComplexF64, result)
 
-    anten_pattern(
+    return anten_pattern(
         θ=interpolate!((θ, ϕ), (@view result[1, :, :]), Gridded(Linear())),
         ϕ=interpolate!((θ, ϕ), (@view result[2, :, :]), Gridded(Linear()))
-    )
+    ), I.*coeffi
 end
+
+linear_interp_pattern(pattern_grid) = interpolate!((θ_default, ϕ_default), pattern_grid, Gridded(Linear())),
 
 
 function cal_pattern_cuda_kernel(
@@ -245,6 +262,7 @@ end
 
 # function below may has performance problem that need to be check because of the usage of lambda inside the comprehension 
 # unit of radiation intensity is w/sr (watt/unit solid angle) refer to Antenna Theory 2-12a
+# FIXME too slow!!
 function radiation_intensity(pattern::anten_pattern, component=:all)
     if component == :all
         (θ, ϕ) -> 1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2 + abs(pattern.ϕ(θ, ϕ))^2)

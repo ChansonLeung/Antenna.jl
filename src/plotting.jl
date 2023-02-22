@@ -11,6 +11,7 @@ using Lazy:@>
 @recipe f(::Type{Vector{anten_point}}, points::Vector{anten_point}) = getfield.(points, :p)
 
 @recipe function f(pattern::anten_pattern, component=:all)
+    display(pattern)
     xlabel --> "u"
     ylabel --> "v"
 
@@ -96,10 +97,10 @@ function plot_pattern(pattern::anten_pattern, component=:all; min = -20, θ = θ
     max_U = maximum(r_log_raw)
     max_theta = θ_grid[r_log_raw.==max_U] .|>
                 rad2deg .|>
-                x -> round(x, digits = 2)
+                x -> round(x, digits = 4)
     max_phi = ϕ_grid[r_log_raw.==max_U] .|>
               rad2deg .|>
-              x -> round(x, digits = 2)
+              x -> round(x, digits = 4)
 
     r_log_limmin = 10log10.(r)
     r_log_limmin[r_log_limmin.<min] .= min
@@ -119,7 +120,7 @@ function plot_pattern(pattern::anten_pattern, component=:all; min = -20, θ = θ
             x = x, y = y, z = z,
             # customdata = [[θ,ϕ] for (θ,ϕ) in zip(rad2deg.(θ), rad2deg.(ϕ))],
             text = map(
-                p -> "θ:$(round(p[1], digits=2))    ϕ:$(round(p[2], digits=2))    r:$(round(p[3], digits=2))",
+                p -> "θ:$(round(p[1], digits=4))    ϕ:$(round(p[2], digits=4))    r:$(round(p[3], digits=4))",
                 zip(
                     rad2deg.(θ),
                     rad2deg.(ϕ),
