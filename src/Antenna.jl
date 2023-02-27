@@ -156,25 +156,33 @@ function cal_pattern(
     D_direct = ones(length(point))
 
     spin && @floop for (idx,p) in enumerate(point)
-       pattern_i = rotate_pattern_tullion(p.pattern_grid, p.pattern, p.local_coord)
-    #    (optimal_directivity !== nothing) &&  (D_direct[idx] = directivity(pattern_i, optimal_directivity)(θₜ, ϕₜ))
+        pattern_i = if p.pattern_grid_cache == false
+            p.pattern_grid_cache = true
+            pattern_i = rotate_pattern_tullion(p.pattern_grid, p.pattern, p.local_coord)
+        else
+            # p.pattern_grid_cache = false
+            linear_interp_pattern_2com(p.pattern_grid)
+        end
         (optimal_directivity !== nothing) &&  (D_direct[idx] = directivity_beta(pattern_i, θₜ, ϕₜ, optimal_directivity, power=radiated_power_beta(p.pattern)))
-
-        # directivity_beta(pattern_i, θₜ, ϕₜ, optimal_directivity, power=radiated_power_beta(p.pattern))
     end
 
 
     positions = getfield.(point, :p)
     coeffi = getfield.(point, :coeffi) .* sqrt.(D_direct)
     pattern = getfield.(point, :pattern_grid)
+    AF_caches = getfield.(point, :AF_cache)
 
     I===nothing && @tullio I[p] := Iₛ(positions[p], θₜ, ϕₜ, k)
     if withAF
-        @tullio result[i, j] := coeffi[p] * I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i, j]))
-        # @tullio result[i, j] := coeffi[p] * I[p] * SVector{2}((@view pattern[p][:, i, j]))
-    else
-        @tullio result[i, j] := coeffi[p] * I[p] * SVector{2}((@view pattern[p][:, i, j]))
+        # @tullio result[i, j] := coeffi[p] * I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i, j]))
+        # for (pattern_grid_i, if_caches, idx) in zip(pattern, AF_caches, 1:length(point))
+        #      if_caches && (@tullio pattern_grid_i[c, i, j] *= AF(positions[p], θ[i], ϕ[j], k))
+        #      point[idx].AF_cache = false
+        # end
     end
+
+    @tullio result[i, j] := coeffi[p] * I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i, j]))
+    # @tullio result[i, j] := coeffi[p] * I[p] * SVector{2}((@view pattern[p][:, i, j]))
     result = reinterpret(reshape, ComplexF64, result)
 
     return anten_pattern(
