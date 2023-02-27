@@ -36,13 +36,19 @@ export
     vec_θ_static,
     vec_ϕ,
     vec_ϕ_static,
+    maximum_directivity,
+    linear_interp_pattern,
+    linear_interp_pattern_2com,
     #degbug
     rotate_pattern_tullion,
-    cal_pattern_cuda
+    cal_pattern_cuda,
+    radiated_power_beta,
+    directivity_beta
 
 # array function
 # array factor
-AF(point, θ, ϕ, k) = exp(1im * k * (point[1] * sin(θ)cos(ϕ) + point[2] * sin(θ)sin(ϕ) + point[3] * cos(θ)))
+# AF(point, θ, ϕ, k) = exp(1im * k * (point[1] * sin(θ)cos(ϕ) + point[2] * sin(θ)sin(ϕ) + point[3] * cos(θ)))
+AF(point, θ, ϕ, k) = cis(k * (point[1] * sin(θ)cos(ϕ) + point[2] * sin(θ)sin(ϕ) + point[3] * cos(θ)))
 # current source
 Iₛ(point, θₜ, ϕₜ, k) = AF(point, θₜ, ϕₜ, k)^-1
 # Iₛ(point, θₜ, ϕₜ, k) = 1
@@ -135,14 +141,14 @@ end
 function cal_pattern(
         point::Vector{anten_point},
         θₜ,
-        ϕₜ; 
+        ϕₜ;
         k::Float64=k,
         θ=θ_default,
         ϕ=ϕ_default,
         spin=false,
         I=nothing,
         withAF=true,
-        optimal_directivity=false,
+        optimal_directivity=nothing,
         args...
     )
     θₜ = Float64(θₜ)
@@ -150,9 +156,14 @@ function cal_pattern(
     D_direct = ones(length(point))
 
     spin && @floop for (idx,p) in enumerate(point)
-       pattern_i = rotate_pattern_tullion(p.pattern_grid, p.pattern, p.local_coord, interp=true)
-       optimal_directivity &&  (D_direct[idx] = directivity(pattern_i)(θₜ, ϕₜ))
+       pattern_i = rotate_pattern_tullion(p.pattern_grid, p.pattern, p.local_coord)
+    #    (optimal_directivity !== nothing) &&  (D_direct[idx] = directivity(pattern_i, optimal_directivity)(θₜ, ϕₜ))
+        (optimal_directivity !== nothing) &&  (D_direct[idx] = directivity_beta(pattern_i, θₜ, ϕₜ, optimal_directivity, power=radiated_power_beta(p.pattern)))
+
+        # directivity_beta(pattern_i, θₜ, ϕₜ, optimal_directivity, power=radiated_power_beta(p.pattern))
     end
+
+
     positions = getfield.(point, :p)
     coeffi = getfield.(point, :coeffi) .* sqrt.(D_direct)
     pattern = getfield.(point, :pattern_grid)
@@ -160,6 +171,7 @@ function cal_pattern(
     I===nothing && @tullio I[p] := Iₛ(positions[p], θₜ, ϕₜ, k)
     if withAF
         @tullio result[i, j] := coeffi[p] * I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i, j]))
+        # @tullio result[i, j] := coeffi[p] * I[p] * SVector{2}((@view pattern[p][:, i, j]))
     else
         @tullio result[i, j] := coeffi[p] * I[p] * SVector{2}((@view pattern[p][:, i, j]))
     end
@@ -171,7 +183,14 @@ function cal_pattern(
     ), I.*coeffi
 end
 
-linear_interp_pattern(pattern_grid) = interpolate!((θ_default, ϕ_default), pattern_grid, Gridded(Linear())),
+linear_interp_pattern(pattern_grid) = interpolate!((θ_default, ϕ_default), pattern_grid, Gridded(Linear()))
+linear_interp_pattern_2com(pattern_grid) = begin
+    result = reinterpret(reshape, ComplexF64, pattern_grid)
+    return anten_pattern(
+        θ=interpolate!((θ_default, ϕ_default), (@view result[1, :, :]), Gridded(Linear())),
+        ϕ=interpolate!((θ_default, ϕ_default), (@view result[2, :, :]), Gridded(Linear()))
+    )
+end
 
 
 function cal_pattern_cuda_kernel(
@@ -272,16 +291,48 @@ function radiation_intensity(pattern::anten_pattern, component=:all)
         (θ, ϕ) -> 1 / 2(120pi) * (abs(pattern.ϕ(θ, ϕ))^2)
     end
 end
+function radiation_intensity_beta(pattern::anten_pattern, θ, ϕ, component=:all)
+    if component == :all
+        1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2 + abs(pattern.ϕ(θ, ϕ))^2)
+    elseif component==:θ
+        1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2)
+    elseif component==:ϕ
+        1 / 2(120pi) * (abs(pattern.ϕ(θ, ϕ))^2)
+    end
+end
 # unit of radiated power is w (watt) refer to Antenna Theory 2-13
 @memoize function radiated_power(pattern::anten_pattern, component=:all)
     result = sum([sin(θ) * U * 2pi * pi * 1 / size(ϕ_default, 1)size(θ_default, 1)
                   for (U, θ) in zip(radiation_intensity(pattern, component).(θ_grid, ϕ_grid), θ_grid)])
+end
+#FIXME the radiated_power_beta did not take component into account
+function radiated_power_beta(pattern::anten_pattern, component=:all)
+    if pattern.radiated_power === nothing
+        pattern.radiated_power = sum([sin(θ) * U * 2pi * pi * 1 / size(ϕ_default, 1)size(θ_default, 1)
+                  for (U, θ) in zip(radiation_intensity(pattern, component).(θ_grid, ϕ_grid), θ_grid)])
+    else
+        pattern.radiated_power
+    end
 end
 
 # no unit refer to Antenna Theory 2-16
 @memoize function directivity(pattern::anten_pattern, component=:all)
     (θ, ϕ) -> 4pi * radiation_intensity(pattern, component)(θ, ϕ) / radiated_power(pattern)
 end
+function directivity_beta(pattern::anten_pattern, θ,ϕ, component=:all; power=nothing)
+    if power === nothing
+        4pi * radiation_intensity_beta(pattern, θ, ϕ, component) / radiated_power_beta(pattern)
+    else
+        4pi * radiation_intensity_beta(pattern, θ, ϕ, component) / power
+    end
+end
+function maximum_directivity(pattern::anten_pattern)
+   dir = directivity(pattern).(θ_grid, ϕ_grid)
+   max = maximum(dir)
+   max, (θ_grid[dir.==max][1] , ϕ_grid[dir.==max][1])
+end
+
+
 # no unit refer to Antenna Theory 2-16
 gain = (pattern, inciden_power) -> function (θ, ϕ, component=:all)
     4pi * radiation_intensity(pattern, component)(θ, ϕ) / inciden_power

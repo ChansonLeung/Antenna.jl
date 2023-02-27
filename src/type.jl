@@ -12,7 +12,13 @@ include("synthesis.jl")
 Base.@kwdef mutable struct anten_pattern
     θ::Any
     ϕ::Any
+    radiated_power = nothing
+    # cache_info = Dict{Symbol, Bool}()
+    # cache_directivity = 
+    # cache_power
 end
+
+
 Base.show(io::IO, pattern::anten_pattern) = begin
     D_func = directivity(pattern)
     D = D_func.(θ_grid, ϕ_grid)
