@@ -160,7 +160,6 @@ function cal_pattern(
             p.pattern_grid_cache = true
             pattern_i = rotate_pattern_tullion(p.pattern_grid, p.pattern, p.local_coord)
         else
-            # p.pattern_grid_cache = false
             linear_interp_pattern_2com(p.pattern_grid)
         end
         (optimal_directivity !== nothing) &&  (D_direct[idx] = directivity_beta(pattern_i, θₜ, ϕₜ, optimal_directivity, power=radiated_power_beta(p.pattern)))
@@ -170,19 +169,25 @@ function cal_pattern(
     positions = getfield.(point, :p)
     coeffi = getfield.(point, :coeffi) .* sqrt.(D_direct)
     pattern = getfield.(point, :pattern_grid)
-    AF_caches = getfield.(point, :AF_cache)
+    pattern_with_AF = getfield.(point, :pattern_grid_withAF)
 
     I===nothing && @tullio I[p] := Iₛ(positions[p], θₜ, ϕₜ, k)
+
     if withAF
-        # @tullio result[i, j] := coeffi[p] * I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i, j]))
-        # for (pattern_grid_i, if_caches, idx) in zip(pattern, AF_caches, 1:length(point))
-        #      if_caches && (@tullio pattern_grid_i[c, i, j] *= AF(positions[p], θ[i], ϕ[j], k))
-        #      point[idx].AF_cache = false
-        # end
+         for idx in  eachindex(pattern_with_AF)
+            if point[idx].pattern_grid_withAF_cache==false
+                AF_grid  = map(θ_grid, ϕ_grid) do  θ,ϕ 
+                    AF(positions[idx], θ, ϕ, k)
+                end
+                pattern_AF_i =  pattern_with_AF[idx]
+                pattern_AF_i .= reshape(AF_grid, 1,size(θ_grid)...) .* pattern[idx]
+                point[idx].pattern_grid_withAF_cache = true
+            end
+        end
     end
 
-    @tullio result[i, j] := coeffi[p] * I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i, j]))
-    # @tullio result[i, j] := coeffi[p] * I[p] * SVector{2}((@view pattern[p][:, i, j]))
+    # @tullio result[i, j] := coeffi[p] * I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i, j]))
+    @tullio result[i, j] := coeffi[p] * I[p] * SVector{2}((@view pattern_with_AF[p][:, i, j]))
     result = reinterpret(reshape, ComplexF64, result)
 
     return anten_pattern(
@@ -301,7 +306,10 @@ function radiation_intensity(pattern::anten_pattern, component=:all)
 end
 function radiation_intensity_beta(pattern::anten_pattern, θ, ϕ, component=:all)
     if component == :all
-        1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2 + abs(pattern.ϕ(θ, ϕ))^2)
+
+        # 1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2 + abs(pattern.ϕ(θ, ϕ))^2)
+    broadcast((θ,ϕ)->1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2 + abs(pattern.ϕ(θ, ϕ))^2), θ,ϕ)
+        
     elseif component==:θ
         1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2)
     elseif component==:ϕ
@@ -329,9 +337,9 @@ end
 end
 function directivity_beta(pattern::anten_pattern, θ,ϕ, component=:all; power=nothing)
     if power === nothing
-        4pi * radiation_intensity_beta(pattern, θ, ϕ, component) / radiated_power_beta(pattern)
+       4pi * radiation_intensity_beta(pattern, θ, ϕ, component) / radiated_power_beta(pattern)
     else
-        4pi * radiation_intensity_beta(pattern, θ, ϕ, component) / power
+       4pi * radiation_intensity_beta(pattern, θ, ϕ, component) / power
     end
 end
 function maximum_directivity(pattern::anten_pattern)

@@ -59,7 +59,8 @@ mutable struct anten_point
     local_coord
     pattern_grid
     pattern_grid_cache::Bool 
-    AF_cache::Bool 
+    pattern_grid_withAF
+    pattern_grid_withAF_cache::Bool
 end
 Base.show(io::IO, array::anten_point) = print(io, "p: $(array.p), local_coord: $(array.local_coord)")
 
@@ -70,7 +71,7 @@ anten_point(;p=[0,0,0], pattern = pattern_identity, local_coord = Matrix(1.0I,3,
         pattern_grid[1,:,:] .= pattern.θ.(θ_grid,ϕ_grid)
         pattern_grid[2,:,:] .= pattern.ϕ.(θ_grid, ϕ_grid)
     end
-    anten_point(p, pattern, coeffi, local_coord, pattern_grid, false, false)
+    anten_point(p, pattern, coeffi, local_coord, pattern_grid, false,  deepcopy(pattern_grid), false)
 end
 
 # # make it like a Vector{Float64}
