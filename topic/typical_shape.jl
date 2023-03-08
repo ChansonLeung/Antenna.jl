@@ -2,6 +2,8 @@ using Antenna
 using GLMakie
 using LinearAlgebra
 using PyFormattedStrings
+using StaticArrays
+using PyCall
 
 ## ---------define array create function---------
 function create_array_cylinder(; R=5λ, dh=λ / 2, N_layers=nothing, N_in_eachlayer=nothing, pattern=pattern_identity)
@@ -47,7 +49,7 @@ include("./makie_antenna.jl")
 
 ## ---------read pattern from hfss and get anten_pattern of patch---------
 set_param(freq=2.7e9)
-patch = read_hfss_pattern()
+patch = read_hfss_pattern("test/elem/rE.csv")
 ## ---------create array for cylinder Vector{anten_point}---------
 array_cylinder = create_array_cylinder(pattern = patch)
 
@@ -165,12 +167,12 @@ end
 ## --------- bloack box---------
 using BlackBoxOptim
 
-bboptimize(f;SearchRange=(0,1), NumDimensions=400, MaxSteps=500_000)
+bboptimize(f;SearchRange=(0,1),TargetFitness=-30.0, NumDimensions=400, MaxSteps=500_000)
 
 
 ## ---------test local maxima---------
 input = rand(400);
-f(input);
+@profview f(input);
 @time res_pattern, D = cal_pattern(array_plane, 0, 0);
 @benchmark sll_gain($res_pattern)
 
