@@ -20,6 +20,8 @@ include("type.jl")
 include("utils.jl")
 include("plotting.jl")
 include("read_re_file.jl")
+include("makie_antenna.jl")
+include("typical_shape.jl")
 
 export
     cal_pattern,
@@ -43,7 +45,8 @@ export
     rotate_pattern_tullion,
     cal_pattern_cuda,
     radiated_power_beta,
-    directivity_beta
+    directivity_beta,
+    radiation_intensity_beta
 
 # array function
 # array factor
@@ -305,15 +308,14 @@ function radiation_intensity(pattern::anten_pattern, component=:all)
     end
 end
 function radiation_intensity_beta(pattern::anten_pattern, θ, ϕ, component=:all)
+    patternθ = pattern.θ
+    patternϕ = pattern.ϕ
     if component == :all
-
-        # 1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2 + abs(pattern.ϕ(θ, ϕ))^2)
-    broadcast((θ,ϕ)->1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2 + abs(pattern.ϕ(θ, ϕ))^2), θ,ϕ)
-        
+        @tullio res[i,j] := 1 / 2(120pi) * (abs(patternθ(θ[i,j], ϕ[i,j]))^2 + abs(patternϕ(θ[i,j], ϕ[i,j]))^2)
     elseif component==:θ
-        1 / 2(120pi) * (abs(pattern.θ(θ, ϕ))^2)
+        @tullio res[i,j] := 1 / 2(120pi) * abs(patternθ(θ[i,j], ϕ[i,j]))^2 
     elseif component==:ϕ
-        1 / 2(120pi) * (abs(pattern.ϕ(θ, ϕ))^2)
+        @tullio res[i,j] := 1 / 2(120pi) * abs(patternϕ(θ[i,j], ϕ[i,j]))^2
     end
 end
 # unit of radiated power is w (watt) refer to Antenna Theory 2-13
