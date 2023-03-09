@@ -1,19 +1,21 @@
 using Antenna
 using Makie
+    
 
-@recipe(Pattern3D) do scene
-    Attributes(
+
+Makie.@recipe(Pattern3D) do scene
+    Makie.Attributes(
         min_gain = -20
     )
 end
-@recipe(ArrayPoints) do scene
-    Attributes(
+Makie.@recipe(ArrayPoints) do scene
+    Makie.Attributes(
         min_gain = -20
     )
 end
 
-@recipe(PatternUV) do scene
-    Attributes(
+Makie.@recipe(PatternUV) do scene
+    Makie.Attributes(
         min_gain = -20
     )
 end
@@ -35,7 +37,7 @@ function Makie.plot!(pattern3D_plot::Pattern3D{<:Tuple{anten_pattern}})
     end
     Makie.Observables.onany(update_plot, pattern)
     update_plot(pattern[])
-    surface!(pattern3D_plot, x,y,z,color=r, colormap="lightrainbow")
+    Makie.surface!(pattern3D_plot, x,y,z,color=r, colormap="lightrainbow")
 end
 
 
@@ -56,7 +58,7 @@ function Makie.plot!(pattern3D_plot::Pattern3D{<:Tuple{anten_pattern}})
     end
     Makie.Observables.onany(update_plot, pattern)
     update_plot(pattern[])
-    surface!(pattern3D_plot, x,y,z,color=r, colormap="lightrainbow")
+    Makie.surface!(pattern3D_plot, x,y,z,color=r, colormap="lightrainbow")
 end
 
 function Makie.plot!(point_array::ArrayPoints{<:Tuple{Vector{anten_point}, Vector{Float64}}})
@@ -75,5 +77,5 @@ function Makie.plot!(point_array::ArrayPoints{<:Tuple{Vector{anten_point}, Vecto
     end
     Makie.Observables.onany(update_plot, array, input_D)
     update_plot(array[], input_D[])
-    scatter!(point_array, x,y,z,color=c)
+    Makie.scatter!(point_array, x,y,z,color=c)
 end
