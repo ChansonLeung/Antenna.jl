@@ -152,20 +152,28 @@ function cal_pattern(
         I=nothing,
         withAF=true,
         optimal_directivity=nothing,
+        result = nothing,
         args...
     )
     θₜ = Float64(θₜ)
     ϕₜ = Float64(ϕₜ)
     D_direct = ones(length(point))
 
-    spin && @floop for (idx,p) in enumerate(point)
+    spin &&  for (idx,p) in enumerate(point)
         pattern_i = if p.pattern_grid_cache == false
             p.pattern_grid_cache = true
             pattern_i = rotate_pattern_tullion(p.pattern_grid, p.pattern, p.local_coord)
         else
             linear_interp_pattern_2com(p.pattern_grid)
         end
-        (optimal_directivity !== nothing) &&  (D_direct[idx] = directivity_beta(pattern_i, θₜ, ϕₜ, optimal_directivity, power=radiated_power_beta(p.pattern)))
+        (optimal_directivity !== nothing) &&  (
+            D_direct[idx] = directivity_beta(
+                pattern_i, 
+                θₜ, 
+                ϕₜ, 
+                optimal_directivity, power=radiated_power_beta(p.pattern)
+            )
+        )
     end
 
 
@@ -177,20 +185,26 @@ function cal_pattern(
     I===nothing && @tullio I[p] := Iₛ(positions[p], θₜ, ϕₜ, k)
 
     if withAF
-         for idx in  eachindex(pattern_with_AF)
-            if point[idx].pattern_grid_withAF_cache==false
-                AF_grid  = map(θ_grid, ϕ_grid) do  θ,ϕ 
-                    AF(positions[idx], θ, ϕ, k)
+      @floop  for idx_point in  eachindex(pattern_with_AF)
+            if point[idx_point].pattern_grid_withAF_cache==false
+                pattern_with_AF_i = pattern_with_AF[idx_point]
+                pattern_i = pattern[idx_point]
+                for idx_grid = CartesianIndices(θ_grid)
+                    tmp_AF = AF(positions[idx_point], θ_grid[idx_grid], ϕ_grid[idx_grid], k)
+                    pattern_with_AF_i[1, idx_grid[1],idx_grid[2]] = tmp_AF * pattern_i[1, idx_grid[1],idx_grid[2]]
+                    pattern_with_AF_i[2, idx_grid[1],idx_grid[2]] = tmp_AF * pattern_i[2, idx_grid[1],idx_grid[2]]
                 end
-                pattern_AF_i =  pattern_with_AF[idx]
-                pattern_AF_i .= reshape(AF_grid, 1,size(θ_grid)...) .* pattern[idx]
-                point[idx].pattern_grid_withAF_cache = true
+                point[idx_point].pattern_grid_withAF_cache = true
             end
         end
     end
 
-    # @tullio result[i, j] := coeffi[p] * I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i, j]))
-    @tullio result[i, j] := coeffi[p] * I[p] * SVector{2}((@view pattern_with_AF[p][:, i, j]))
+
+    if isnothing(result)
+        result = zeros(SVector{2, ComplexF64},size(θ_grid)...)
+    end
+    # @tullio result[i, j] = coeffi[p] * I[p] * AF(positions[p], θ[i], ϕ[j], k) * SVector{2}((@view pattern[p][:, i, j]))
+    @tullio result[i, j] = coeffi[p] * I[p] * SVector{2}((@view pattern_with_AF[p][:, i, j]))
     result = reinterpret(reshape, ComplexF64, result)
 
     return anten_pattern(
@@ -310,12 +324,32 @@ end
 function radiation_intensity_beta(pattern::anten_pattern, θ, ϕ, component=:all)
     patternθ = pattern.θ
     patternϕ = pattern.ϕ
-    if component == :all
-        @tullio res[i,j] := 1 / 2(120pi) * (abs(patternθ(θ[i,j], ϕ[i,j]))^2 + abs(patternϕ(θ[i,j], ϕ[i,j]))^2)
-    elseif component==:θ
-        @tullio res[i,j] := 1 / 2(120pi) * abs(patternθ(θ[i,j], ϕ[i,j]))^2 
-    elseif component==:ϕ
-        @tullio res[i,j] := 1 / 2(120pi) * abs(patternϕ(θ[i,j], ϕ[i,j]))^2
+    if length(θ)>1 && length(ϕ)>1
+        if component == :all
+            @tullio res[i,j] := 1 / 2(120pi) * (abs(patternθ(θ[i,j], ϕ[i,j]))^2 + abs(patternϕ(θ[i,j], ϕ[i,j]))^2)
+        elseif component==:θ
+            @tullio res[i,j] := 1 / 2(120pi) * abs(patternθ(θ[i,j], ϕ[i,j]))^2 
+        elseif component==:ϕ
+            @tullio res[i,j] := 1 / 2(120pi) * abs(patternϕ(θ[i,j], ϕ[i,j]))^2
+        elseif component==:RHCP
+            @tullio res[i,j] := begin
+                θi = θ[i,j]
+                ϕi = ϕ[i,j]
+                vec_θ = vec_θ_static(θi,ϕi)
+                vec_ϕ = vec_ϕ_static(θi,ϕi)
+                E_vec = patternθ(θi,ϕi)*vec_θ +  patternϕ(θi,ϕi)*vec_ϕ
+                RHCP_base = (vec_θ_static(θi,ϕi) - 1im*vec_ϕ_static(θi,ϕi))./sqrt(2)
+                1/2(120pi) * (dot(E_vec,RHCP_base))
+            end
+        end
+    else
+        if component == :all
+            (@. 1 / 2(120pi) * (abs(patternθ(θ, ϕ))^2 + abs(patternϕ(θ, ϕ))^2))
+        elseif component==:θ
+            @. 1 / 2(120pi) * abs(patternθ(θ, ϕ))^2 
+        elseif component==:ϕ
+            @. 1 / 2(120pi) * abs(patternϕ(θ, ϕ))^2
+        end
     end
 end
 # unit of radiated power is w (watt) refer to Antenna Theory 2-13

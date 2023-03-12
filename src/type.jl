@@ -1,5 +1,7 @@
 # FIXME
 using LinearAlgebra
+using Tullio
+using LoopVectorization
 include("synthesis.jl")
 
 # XXX only for uniform gird
@@ -67,9 +69,11 @@ Base.show(io::IO, array::anten_point) = print(io, "p: $(array.p), local_coord: $
 
 anten_point(;p=[0,0,0], pattern = pattern_identity, local_coord = Matrix(1.0I,3,3), coeffi=1, pattern_grid=nothing) = begin
     if pattern_grid === nothing
-        pattern_grid = zeros(ComplexF64,2,size(θ_grid)...)
-        pattern_grid[1,:,:] .= pattern.θ.(θ_grid,ϕ_grid)
-        pattern_grid[2,:,:] .= pattern.ϕ.(θ_grid, ϕ_grid)
+        pattern_grid = zeros(ComplexF64, 2, size(θ_grid)...)
+        patternθ = pattern.θ
+        patternϕ = pattern.ϕ
+        @tullio pattern_grid[1,i,j] = patternθ(θ_default[i],ϕ_default[j])
+        @tullio pattern_grid[2,i,j] = patternϕ(θ_default[i],ϕ_default[j])
     end
     anten_point(p, pattern, coeffi, local_coord, pattern_grid, false,  deepcopy(pattern_grid), false)
 end
@@ -97,7 +101,7 @@ end
 
 
 
-function point_rectangle(; Nx, Ny, dx, dy, pattern)
+function point_rectangle(; Nx=10, Ny=10, dx=λ/2, dy=λ/2, pattern=pattern_identity)
     vec_2_struct_point = (p) -> anten_point(
         p=p, 
         pattern=pattern, 
