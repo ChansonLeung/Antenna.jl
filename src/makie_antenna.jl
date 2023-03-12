@@ -20,14 +20,14 @@ Makie.@recipe(PatternUV) do scene
     )
 end
 
-function Makie.plot!(pattern3D_plot::Pattern3D{<:Tuple{anten_pattern}})
+function Makie.plot!(pattern3D_plot::Pattern3D{<:Tuple{Matrix{Float64}}})
     pattern = pattern3D_plot[1]
     x = Observable(zeros(size(θ_grid)...))
     y = Observable(zeros(size(θ_grid)...))
     z = Observable(zeros(size(θ_grid)...))
     r = Observable(zeros(size(θ_grid)...))
     function update_plot(pattern)
-        dir = 1 / 2(120pi) *(abs.(pattern.θ.coefs) .^2 .+  abs.(pattern.ϕ.coefs) .^2 )
+        dir = pattern
         dir = 10log10.(dir) 
         local r_local =  dir.+ 20 |> r-> replace(x->x < 0 ? 0 : x,  r)
         x[] = @. r_local*sin(θ_grid)cos(ϕ_grid)
@@ -60,6 +60,7 @@ function Makie.plot!(pattern3D_plot::Pattern3D{<:Tuple{anten_pattern}})
     update_plot(pattern[])
     Makie.surface!(pattern3D_plot, x,y,z,color=r, colormap="lightrainbow")
 end
+
 
 function Makie.plot!(point_array::ArrayPoints{<:Tuple{Vector{anten_point}, Vector{Float64}}})
     array = point_array[1]
