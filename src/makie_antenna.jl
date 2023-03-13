@@ -1,5 +1,6 @@
 using Antenna
 using Makie
+using Meshes
     
 
 
@@ -62,21 +63,57 @@ function Makie.plot!(pattern3D_plot::Pattern3D{<:Tuple{anten_pattern}})
 end
 
 
-function Makie.plot!(point_array::ArrayPoints{<:Tuple{Vector{anten_point}, Vector{Float64}}})
-    array = point_array[1]
-    input_D = point_array[2]
-    x = Observable(zeros(size(array.val)...))
-    y = Observable(zeros(size(array.val)...))
-    z = Observable(zeros(size(array.val)...))
-    c = Observable(zeros(size(input_D.val)...))
+# function Makie.plot!(point_array::ArrayPoints{<:Tuple{Vector{anten_point}, Vector{Float64}}})
+#     array = point_array[1]
+#     input_D = point_array[2]
+#     x = Observable(zeros(size(array.val)...))
+#     y = Observable(zeros(size(array.val)...))
+#     z = Observable(zeros(size(array.val)...))
+#     c = Observable(zeros(size(input_D.val)...))
 
-    function update_plot(array, input_D)
-        x[] = getfield.(array, :p) .|> x->x[1]
-        y[] = getfield.(array, :p) .|> x->x[2]
-        z[] = getfield.(array, :p) .|> x->x[3]
-        c[] = input_D
-    end
-    Makie.Observables.onany(update_plot, array, input_D)
-    update_plot(array[], input_D[])
-    Makie.scatter!(point_array, x,y,z,color=c)
-end
+#     function update_plot(array, input_D)
+#         x[] = getfield.(array, :p) .|> x->x[1]
+#         y[] = getfield.(array, :p) .|> x->x[2]
+#         z[] = getfield.(array, :p) .|> x->x[3]
+#         c[] = input_D
+#     end
+#     Makie.Observables.onany(update_plot, array, input_D)
+#     update_plot(array[], input_D[])
+#     Makie.scatter!(point_array, x,y,z,color=c)
+# end
+
+# function Makie.plot!(point_array::ArrayPoints{<:Tuple{Vector{Vector{Float64}}, Vector{Float64}}})
+#     array = point_array[1]
+#     color = point_array[2]
+#     x = Observable(zeros(size(array.val)...))
+#     y = Observable(zeros(size(array.val)...))
+#     z = Observable(zeros(size(array.val)...))
+#     c = Observable(zeros(size(color.val)...))
+
+#     function update_plot(array,color)
+#         x[] = array .|> x->x[1]
+#         y[] = array .|> x->x[2]
+#         z[] = array .|> x->x[3]
+#         c[] = color
+#     end
+#     Makie.Observables.onany(update_plot, array, color)
+#     update_plot(array[], color[])
+#     Makie.scatter!(point_array, x,y,z, color=c)
+# end
+
+
+Makie.convert_arguments(plottype::Type{<:ArrayPoints}, vec_p::Vector{Vector{Float64}}) = 
+    convert_arguments(plottype, vec_p, zeros(size(vec_p)))
+
+Makie.convert_arguments(plottype::Type{<:ArrayPoints}, vec_p::Vector{Meshes.Point3}) = 
+    convert_arguments(plottype, map(x->[x.coords...], vec_p))
+
+## dispatch scatter
+Makie.convert_arguments(plottype::Type{<:Scatter}, vec_p::Vector{Vector{Float64}}) = 
+    convert_arguments(plottype, map(x->Makie.Point3(x), vec_p))
+Makie.convert_arguments(plottype::Type{<:Scatter}, vec_p::Vector{anten_point}) = 
+    convert_arguments(plottype, map(x->Makie.Point3(x.p), vec_p))
+Makie.convert_arguments(plottype::Type{<:Scatter}, vec_p::Vector{Meshes.Point3}) = 
+    convert_arguments(plottype, map(x->Makie.Point3(x.coords...), vec_p))
+# Makie.convert_arguments(plottype::Type{<:ArrayPoints}, vec_p::Vector{anten_point}) = 
+#     convert_arguments(plottype, map(x->x.p, vec_p), map(x->x.coefs, vec_p))
